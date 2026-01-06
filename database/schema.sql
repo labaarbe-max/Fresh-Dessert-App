@@ -1,10 +1,11 @@
 -- ================================================
--- Fresh Dessert App - Feature: API Deliverers
+-- Fresh Dessert App - Feature: API Products
 -- ================================================
--- Branch: feature/api-deliverers
--- Tables: users + deliverers
+-- Branch: feature/api-products
+-- Tables: users + deliverers + products
 -- ================================================
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS deliverers;
 DROP TABLE IF EXISTS users;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -61,3 +62,41 @@ INSERT INTO users (email, password_hash, first_name, last_name, phone, role, ema
 INSERT INTO deliverers (user_id, vehicle_type, is_available) VALUES
 (1, 'car', TRUE),
 (2, 'car', TRUE);
+
+-- ================================================
+-- Table 3: products - Catalogue produits
+-- ================================================
+CREATE TABLE products (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(200) UNIQUE NOT NULL,
+  description TEXT,
+  category ENUM('tiramisu', 'waffle', 'pastry', 'drink', 'candy') NOT NULL,
+  price DECIMAL(10, 2) NOT NULL,
+  allergens VARCHAR(500),
+  image_url VARCHAR(500),
+  emoji VARCHAR(10),
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_category (category),
+  INDEX idx_active (active),
+  INDEX idx_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================
+-- Produits - Tiramisus
+-- ================================================
+
+INSERT INTO products (name, description, category, price, allergens, emoji, active) VALUES
+-- Tiramisus
+('Caramel Spéculoos', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, spéculoos, coulis spéculoos, coulis caramel', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Soja (traces)', '⭐', TRUE),
+('Nutella Spéculoos', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, spéculoos, coulis Nutella, coulis spéculoos', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Fruits à coque (noisette), Soja', '⭐', TRUE),
+('Oréo Nutella', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Oréo, coulis Nutella', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Fruits à coque (noisette), Soja', '⭐', TRUE),
+('Daim Caramel', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Daim, coulis caramel', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Fruits à coque (amande), Soja', '⭐', TRUE),
+('M&Ms Caramel Beurre Salé Beurre de Cacahuète', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, M&M''s, coulis caramel, beurre de cacahuète', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Arachides, Fruits à coque, Soja', '⭐', TRUE),
+('Brownie Caramel Beurre Salé', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, brownie, cacao, coulis caramel', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Soja', '⭐', TRUE),
+('Mangue Passion Coco', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, coulis mangue, coulis passion, mangue, coco râpée, citron vert', 'tiramisu', 7.50, 'Lait, Œufs, Gluten, Sulfites (possibles)', '⭐', TRUE),
+('Fruits Rouges Chocolat Blanc', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, fruits rouges, coulis fruits rouges, chocolat blanc', 'tiramisu', 8.00, 'Lait, Œufs, Gluten, Soja', '⭐', TRUE),
+('Kinder Bueno White', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Kinder Bueno White, coulis Nutella, coulis Bueno White', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE),
+('Kinder Bueno', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Kinder Bueno, coulis Nutella, coulis Bueno', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE),
+('Kinder Schokobon', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Schokobon, coulis Nutella', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE);
