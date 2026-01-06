@@ -1,8 +1,30 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { createUser, getUserByEmail } from '@/lib/db';
+import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request) {
+    // Vérifier le rate limit
+    const rateLimitResult = await checkRateLimit(request, authRateLimiter);
+    
+    if (!rateLimitResult.success) {
+        return NextResponse.json(
+            {
+                success: false,
+                error: 'Too many requests. Please try again later.',
+                retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000)
+            },
+            { 
+                status: 429,
+                headers: {
+                    'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+                    'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+                    'X-RateLimit-Reset': rateLimitResult.reset.toString()
+                }
+            }
+        );
+    }
+
     try {
         const { email, password, first_name, last_name, phone, role } = await request.json();
 

@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getProducts, createProduct } from '@/lib/db';
+import { verifyToken, unauthorizedResponse, forbiddenResponse, verifyRole } from '@/lib/auth-middleware';
 
 export async function GET(request) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('activeOnly') === 'true';
@@ -28,6 +36,19 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
+  // Seuls admin et dispatcher peuvent créer des produits
+  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
+  if (roleCheck.error) {
+    return forbiddenResponse(roleCheck.error);
+  }
+
   try {
     const data = await request.json();
     

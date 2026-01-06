@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getProductById, updateProduct, deleteProduct } from '@/lib/db';
+import { verifyToken, unauthorizedResponse, forbiddenResponse, verifyRole } from '@/lib/auth-middleware';
 
 export async function GET(request, { params }) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
   try {
-    const { id } = await params;  // ← await ajouté
+    const { id } = await params;
     const product = await getProductById(id);
     
     if (!product) {
@@ -34,8 +42,21 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
+  // Seuls admin et dispatcher peuvent modifier des produits
+  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
+  if (roleCheck.error) {
+    return forbiddenResponse(roleCheck.error);
+  }
+
   try {
-    const { id } = await params;  // ← await ajouté
+    const { id } = await params;
     const data = await request.json();
     
     const existingProduct = await getProductById(id);
@@ -69,8 +90,21 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
+  // Seuls admin et dispatcher peuvent supprimer des produits
+  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
+  if (roleCheck.error) {
+    return forbiddenResponse(roleCheck.error);
+  }
+
   try {
-    const { id } = await params;  // ← await ajouté
+    const { id } = await params;
     
     const existingProduct = await getProductById(id);
     if (!existingProduct) {
