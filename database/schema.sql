@@ -1,10 +1,11 @@
 -- ================================================
--- Fresh Dessert App - Feature: API Orders
+-- Fresh Dessert App - Feature: API Deliveries
 -- ================================================
--- Branch: feature/api-orders
--- Tables: users + deliverers + products + orders + order_items
+-- Branch: feature/api-deliveries
+-- Tables: users + deliverers + products + orders + order_items + deliveries
 -- ================================================
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS deliveries;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS products;
@@ -104,6 +105,23 @@ INSERT INTO products (name, description, category, price, allergens, emoji, acti
 ('Kinder Schokobon', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Schokobon, coulis Nutella', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE);
 
 -- ================================================
+-- Table 6: deliveries - Tournées de livraison
+-- ================================================
+CREATE TABLE deliveries (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  deliverer_id INT NOT NULL,
+  delivery_date DATE NOT NULL,
+  status ENUM('planned', 'in_progress', 'completed', 'cancelled') NOT NULL DEFAULT 'planned',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (deliverer_id) REFERENCES deliverers(id) ON DELETE CASCADE,
+  INDEX idx_deliverer_id (deliverer_id),
+  INDEX idx_delivery_date (delivery_date),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================
 -- Table 4: orders - Commandes
 -- ================================================
 CREATE TABLE orders (
@@ -115,10 +133,12 @@ CREATE TABLE orders (
   delivery_date DATETIME,
   notes TEXT,
   deliverer_id INT,
+  delivery_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (deliverer_id) REFERENCES deliverers(id) ON DELETE SET NULL,
+  FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE SET NULL,
   INDEX idx_user_id (user_id),
   INDEX idx_status (status),
   INDEX idx_deliverer_id (deliverer_id),
