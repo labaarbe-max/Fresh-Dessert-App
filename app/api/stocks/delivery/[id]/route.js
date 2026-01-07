@@ -1,35 +1,29 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getDeliveryStocks } from '@/lib/db';
-import { verifyToken, unauthorizedResponse, checkRole } from '@/lib/auth-middleware';
 
-export async function GET(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     
     // Récupérer les stocks de la tournée
     const stocks = await getDeliveryStocks(id);
     
-    return NextResponse.json({
-      success: true,
-      count: stocks.length,
-      data: stocks
-    });
-  } catch (error) {
-    console.error('Error in GET /api/stocks/delivery/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch delivery stocks',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      stocks, 
+      null, 
+      200, 
+      { 
+        count: stocks.length,
+        delivery_id: id,
+        requested_by: {
+          id: user.id,
+          email: user.email,
+          role: user.role
+        }
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Delivery Stocks');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer']);

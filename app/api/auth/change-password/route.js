@@ -1,141 +1,75 @@
-import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import { getUserByEmail } from '@/lib/db';
-import { verifyToken, unauthorizedResponse } from '@/lib/auth-middleware';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
+import { getUserByEmail, updateUserPassword } from '@/lib/db';
 import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
+import { validatePasswordChange } from '@/lib/validation';
+import bcrypt from 'bcryptjs';
 
-export async function POST(request) {
-  // Vérifier le rate limit
-  const rateLimitResult = await checkRateLimit(request, authRateLimiter);
-  
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Too many requests. Please try again later.',
-        retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000)
-      },
-      { 
-        status: 429,
-        headers: {
-          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
-          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-          'X-RateLimit-Reset': rateLimitResult.reset.toString()
-        }
-      }
-    );
-  }
-
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const POST = withAuth(async (request, user) => {
   try {
+    // Vérifier le rate limit
+    const rateLimitResult = await checkRateLimit(request, authRateLimiter);
+    
+    if (!rateLimitResult.success) {
+      return handleApiError(
+        new Error('Too many requests. Please try again later.'), 
+        'Change Password',
+        429,
+        {
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+          rateLimit: {
+            limit: rateLimitResult.limit,
+            remaining: rateLimitResult.remaining,
+            reset: rateLimitResult.reset
+          }
+        }
+      );
+    }
+
     const { current_password, new_password } = await request.json();
 
-    // Validation des champs
-    if (!current_password || !new_password) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: current_password, new_password'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validation du nouveau mot de passe (même règles que register)
-    if (new_password.length < 12) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'New password must be at least 12 characters long'
-        },
-        { status: 400 }
-      );
-    }
-
-    const hasUpperCase = /[A-Z]/.test(new_password);
-    const hasLowerCase = /[a-z]/.test(new_password);
-    const hasNumber = /[0-9]/.test(new_password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(new_password);
-
-    if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecialChar) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'New password must contain uppercase, lowercase, number, and special character'
-        },
-        { status: 400 }
-      );
+    // Validation centralisée
+    const validation = validatePasswordChange({ current_password, new_password });
+    if (validation.error) {
+      return handleApiError(validation.error, 'Change Password');
     }
 
     // Récupérer l'utilisateur depuis la base de données
-    const user = await getUserByEmail(authResult.user.email);
+    const dbUser = await getUserByEmail(user.email);
 
-    if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'User not found'
-        },
-        { status: 404 }
-      );
+    if (!dbUser) {
+      return handleApiError(new Error('User not found'), 'Change Password', 404);
     }
 
     // Vérifier l'ancien mot de passe
-    const isPasswordValid = await bcrypt.compare(current_password, user.password_hash);
+    const isPasswordValid = await bcrypt.compare(current_password, dbUser.password_hash);
 
     if (!isPasswordValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Current password is incorrect'
-        },
-        { status: 401 }
-      );
+      return handleApiError(new Error('Current password is incorrect'), 'Change Password', 401);
     }
 
     // Vérifier que le nouveau mot de passe est différent de l'ancien
-    const isSamePassword = await bcrypt.compare(new_password, user.password_hash);
+    const isSamePassword = await bcrypt.compare(new_password, dbUser.password_hash);
 
     if (isSamePassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'New password must be different from current password'
-        },
-        { status: 400 }
-      );
+      return handleApiError(new Error('New password must be different from current password'), 'Change Password');
     }
 
-    // Hasher le nouveau mot de passe
-    const hashedPassword = await bcrypt.hash(new_password, 10);
+    // Mettre à jour le mot de passe
+    await updateUserPassword(dbUser.id, new_password);
 
-    // Mettre à jour le mot de passe dans la base de données
-    const pool = (await import('@/lib/db')).default;
-    await pool.query(
-      'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [hashedPassword, user.id]
+    return createSuccessResponse(
+      null, 
+      'Password changed successfully', 
+      200,
+      { 
+        user_id: user.id,
+        password_strength: 'strong',
+        change_method: 'authenticated_request'
+      }
     );
-
-    return NextResponse.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
 
   } catch (error) {
-    console.error('Error in POST /api/auth/change-password:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to change password',
-        message: error.message
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Change Password');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);

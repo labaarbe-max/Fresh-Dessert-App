@@ -1,79 +1,56 @@
-import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getUserByEmail } from '@/lib/db';
 import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
+import { validateLoginData } from '@/lib/validation';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 export async function POST(request) {
-  // Vérifier le rate limit
-  const rateLimitResult = await checkRateLimit(request, authRateLimiter);
-  
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Too many requests. Please try again later.',
-        retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000)
-      },
-      { 
-        status: 429,
-        headers: {
-          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
-          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-          'X-RateLimit-Reset': rateLimitResult.reset.toString()
-        }
-      }
-    );
-  }
-
   try {
+    // Vérifier le rate limit
+    const rateLimitResult = await checkRateLimit(request, authRateLimiter);
+    
+    if (!rateLimitResult.success) {
+      return handleApiError(
+        new Error('Too many requests. Please try again later.'), 
+        'Login',
+        429,
+        {
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+          rateLimit: {
+            limit: rateLimitResult.limit,
+            remaining: rateLimitResult.remaining,
+            reset: rateLimitResult.reset
+          }
+        }
+      );
+    }
+
     const { email, password } = await request.json();
 
-    if (!email || !password) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing email or password'
-        },
-        { status: 400 }
-      );
+    // Validation centralisée
+    const validation = validateLoginData({ email, password });
+    if (validation.error) {
+      return handleApiError(validation.error, 'Login');
     }
 
     // Récupérer l'utilisateur
     const user = await getUserByEmail(email);
     
     if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid credentials'
-        },
-        { status: 401 }
-      );
+      return handleApiError(new Error('Invalid credentials'), 'Login', 401);
     }
 
     // Vérifier le mot de passe
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     
     if (!isPasswordValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid credentials'
-        },
-        { status: 401 }
-      );
+      return handleApiError(new Error('Invalid credentials'), 'Login', 401);
     }
 
     // Vérifier si l'utilisateur est actif
     if (!user.active) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Account is inactive'
-        },
-        { status: 403 }
-      );
+      return handleApiError(new Error('Account is inactive'), 'Login', 403);
     }
 
     // Créer le token JWT
@@ -89,10 +66,8 @@ export async function POST(request) {
       { expiresIn: '30d' }
     );
 
-    return NextResponse.json({
-      success: true,
-      message: 'Login successful',
-      data: {
+    return createSuccessResponse(
+      {
         user: {
           id: user.id,
           email: user.email,
@@ -101,18 +76,17 @@ export async function POST(request) {
           role: user.role
         },
         token
+      }, 
+      'Login successful', 
+      200,
+      { 
+        token_expires_in: '30d',
+        login_method: 'email_password',
+        user_active: user.active
       }
-    });
+    );
 
   } catch (error) {
-    console.error('Error in POST /api/auth/login:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Login failed',
-        message: error.message
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Login');
   }
 }

@@ -1,137 +1,70 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getProductById, updateProduct, deleteProduct } from '@/lib/db';
-import { verifyToken, unauthorizedResponse, forbiddenResponse, verifyRole } from '@/lib/auth-middleware';
+import { validateProductData } from '@/lib/validation';
 
-export async function GET(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     const product = await getProductById(id);
     
     if (!product) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Product not found'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Product not found'), 'Get Product');
     }
     
-    return NextResponse.json({
-      success: true,
-      data: product
-    });
+    return createSuccessResponse(product, null, 200);
   } catch (error) {
-    console.error('Error in GET /api/products/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch product',
-        message: error.message
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Get Product');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function PUT(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
-  // Seuls admin et dispatcher peuvent modifier des produits
-  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
-  if (roleCheck.error) {
-    return forbiddenResponse(roleCheck.error);
-  }
-
+export const PUT = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     const data = await request.json();
     
+    // Validation centralisée
+    const validation = validateProductData(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Update Product');
+    }
+    
+    // Vérifier que le produit existe
     const existingProduct = await getProductById(id);
     if (!existingProduct) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Product not found'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Product not found'), 'Update Product');
     }
     
     const product = await updateProduct(id, data);
     
-    return NextResponse.json({
-      success: true,
-      data: product
-    });
-  } catch (error) {
-    console.error('Error in PUT /api/products/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update product',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      product, 
+      'Product updated successfully', 
+      200
     );
+  } catch (error) {
+    return handleApiError(error, 'Update Product');
   }
-}
+}, ['admin', 'dispatcher']);
 
-export async function DELETE(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
-  // Seuls admin et dispatcher peuvent supprimer des produits
-  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
-  if (roleCheck.error) {
-    return forbiddenResponse(roleCheck.error);
-  }
-
+export const DELETE = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     
+    // Vérifier que le produit existe
     const existingProduct = await getProductById(id);
     if (!existingProduct) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Product not found'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Product not found'), 'Delete Product');
     }
     
     await deleteProduct(id);
     
-    return NextResponse.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error in DELETE /api/products/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete product',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      null, 
+      'Product deleted successfully', 
+      200
     );
+  } catch (error) {
+    return handleApiError(error, 'Delete Product');
   }
-}
+}, ['admin', 'dispatcher']);

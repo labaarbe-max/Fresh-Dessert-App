@@ -1,131 +1,87 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getAddressById, updateAddress, deleteAddress } from '@/lib/db';
-import { verifyToken, unauthorizedResponse } from '@/lib/auth-middleware';
+import { validateAddressData } from '@/lib/validation';
 
-export async function GET(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     
-    // Récupérer l'adresse (seulement si elle appartient à l'utilisateur)
-    const address = await getAddressById(id, authResult.user.id);
+    const address = await getAddressById(id, user.id);
     
     if (!address) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Address not found'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Address not found'), 'Get Address');
     }
     
-    return NextResponse.json({
-      success: true,
-      data: address
-    });
-  } catch (error) {
-    console.error('Error in GET /api/addresses/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch address',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      address, 
+      null, 
+      200, 
+      { 
+        user_id: user.id,
+        access_level: 'own_address_only'
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Address');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function PUT(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const PUT = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     const data = await request.json();
     
-    // Vérifier que l'adresse existe et appartient à l'utilisateur
-    const existingAddress = await getAddressById(id, authResult.user.id);
-    
-    if (!existingAddress) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Address not found'
-        },
-        { status: 404 }
-      );
+    // Validation centralisée
+    const validation = validateAddressData(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Update Address');
     }
     
-    const address = await updateAddress(id, authResult.user.id, data);
+    // Vérifier que l'adresse existe et appartient à l'utilisateur
+    const existingAddress = await getAddressById(id, user.id);
+    if (!existingAddress) {
+      return handleApiError(new Error('Address not found'), 'Update Address');
+    }
     
-    return NextResponse.json({
-      success: true,
-      data: address
-    });
-  } catch (error) {
-    console.error('Error in PUT /api/addresses/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update address',
-        message: error.message
-      },
-      { status: 500 }
+    const address = await updateAddress(id, user.id, data);
+    
+    return createSuccessResponse(
+      address, 
+      'Address updated successfully', 
+      200,
+      { 
+        updated_by_user: user.id,
+        address_type: address.address_type || 'default'
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Update Address');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function DELETE(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const DELETE = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     
     // Vérifier que l'adresse existe et appartient à l'utilisateur
-    const existingAddress = await getAddressById(id, authResult.user.id);
-    
+    const existingAddress = await getAddressById(id, user.id);
     if (!existingAddress) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Address not found'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Address not found'), 'Delete Address');
     }
     
-    await deleteAddress(id, authResult.user.id);
+    await deleteAddress(id, user.id);
     
-    return NextResponse.json({
-      success: true,
-      message: 'Address deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error in DELETE /api/addresses/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete address',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      null, 
+      'Address deleted successfully', 
+      200,
+      { 
+        deleted_by_user: user.id,
+        deleted_address_type: existingAddress.address_type || 'default'
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Delete Address');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);

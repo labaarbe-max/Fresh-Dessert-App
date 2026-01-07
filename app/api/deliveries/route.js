@@ -1,94 +1,60 @@
-import { NextResponse } from 'next/server';
-import { getDeliveries, createDelivery } from '@/lib/db';
-import { verifyToken, unauthorizedResponse, verifyRole, forbiddenResponse } from '@/lib/auth-middleware';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
+import { getDeliveries, createDelivery, getDelivererByUserId } from '@/lib/db';
+import { validateDeliveryData } from '@/lib/validation';
 
-export async function GET(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
-    // Récupérer deliverer_id si l'utilisateur est un deliverer
+    // Logique métier : filtrer par deliverer si c'est un deliverer
     let delivererId = null;
-    if (authResult.user.role === 'deliverer') {
-      // Récupérer l'ID du deliverer depuis la table deliverers
-      const { getUserByEmail } = await import('@/lib/db');
-      const pool = (await import('@/lib/db')).default;
-      const [deliverers] = await pool.query(
-        'SELECT id FROM deliverers WHERE user_id = ?',
-        [authResult.user.id]
-      );
-      if (deliverers.length > 0) {
-        delivererId = deliverers[0].id;
+    if (user.role === 'deliverer') {
+      const deliverer = await getDelivererByUserId(user.id);
+      if (deliverer) {
+        delivererId = deliverer.id;
       }
     }
     
-    const deliveries = await getDeliveries(delivererId, authResult.user.role);
+    const deliveries = await getDeliveries(delivererId, user.role);
     
-    return NextResponse.json({
-      success: true,
-      count: deliveries.length,
-      data: deliveries
-    });
-  } catch (error) {
-    console.error('Error in GET /api/deliveries:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch deliveries',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      deliveries, 
+      null, 
+      200, 
+      { 
+        count: deliveries.length,
+        user_role: user.role,
+        filtered_by_deliverer: user.role === 'deliverer',
+        deliverer_id: delivererId
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Deliveries');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function POST(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
-  // Seuls admin et dispatcher peuvent créer des tournées
-  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
-  if (roleCheck.error) {
-    return forbiddenResponse(roleCheck.error);
-  }
-
+export const POST = withAuth(async (request, user) => {
   try {
     const data = await request.json();
     
-    // Validation
-    if (!data.deliverer_id || !data.delivery_date) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: deliverer_id, delivery_date'
-        },
-        { status: 400 }
-      );
+    // Validation centralisée
+    const validation = validateDeliveryData(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Create Delivery');
     }
     
     const delivery = await createDelivery(data);
     
-    return NextResponse.json({
-      success: true,
-      data: delivery
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error in POST /api/deliveries:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create delivery',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      delivery, 
+      'Delivery created successfully', 
+      201,
+      { 
+        created_by: user.role,
+        delivery_date: delivery.delivery_date,
+        assigned_deliverer: delivery.deliverer_id
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Create Delivery');
   }
-}
+}, ['admin', 'dispatcher']);

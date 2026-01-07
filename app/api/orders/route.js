@@ -1,82 +1,58 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getOrders, createOrder } from '@/lib/db';
-import { verifyToken, unauthorizedResponse } from '@/lib/auth-middleware';
+import { validateOrderData } from '@/lib/validation';
 
-export async function GET(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
-    const orders = await getOrders(authResult.user.id, authResult.user.role);
+    const orders = await getOrders(user.id, user.role);
     
-    return NextResponse.json({
-      success: true,
-      count: orders.length,
-      data: orders
-    });
-  } catch (error) {
-    console.error('Error in GET /api/orders:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch orders',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      orders, 
+      null, 
+      200, 
+      { 
+        count: orders.length, 
+        user_role: user.role,
+        filtered_by_user: user.role === 'client'
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Orders');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function POST(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const POST = withAuth(async (request, user) => {
   try {
     const data = await request.json();
     
-    // Validation
-    if (!data.delivery_address || !data.items || data.items.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: delivery_address, items'
-        },
-        { status: 400 }
-      );
+    // Validation centralisée
+    const validation = validateOrderData(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Create Order');
     }
     
-    // Si client, forcer user_id à son propre ID
-    // Si admin/dispatcher, permettre de créer pour n'importe quel user
-    const user_id = (authResult.user.role === 'client') 
-      ? authResult.user.id 
-      : (data.user_id || authResult.user.id);
+    // Logique métier : user_id selon le rôle
+    const user_id = user.role === 'client' 
+      ? user.id 
+      : (data.user_id || user.id);
     
     const order = await createOrder({
       ...data,
       user_id
     });
     
-    return NextResponse.json({
-      success: true,
-      data: order
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error in POST /api/orders:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create order',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      order, 
+      'Order created successfully', 
+      201,
+      { 
+        created_by: user.role,
+        user_id: user_id,
+        stock_decremented: order.stock_decremented
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Create Order');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);

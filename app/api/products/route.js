@@ -1,15 +1,9 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getProducts, createProduct } from '@/lib/db';
-import { verifyToken, unauthorizedResponse, forbiddenResponse, verifyRole } from '@/lib/auth-middleware';
+import { validateProductData } from '@/lib/validation';
 
-export async function GET(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('activeOnly') === 'true';
@@ -17,66 +11,35 @@ export async function GET(request) {
     
     const products = await getProducts(activeOnly, category);
     
-    return NextResponse.json({
-      success: true,
-      count: products.length,
-      data: products
-    });
-  } catch (error) {
-    console.error('Error in GET /api/products:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch products',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      products, 
+      null, 
+      200, 
+      { count: products.length, category, activeOnly }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Products');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function POST(request) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
-  // Seuls admin et dispatcher peuvent créer des produits
-  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
-  if (roleCheck.error) {
-    return forbiddenResponse(roleCheck.error);
-  }
-
+export const POST = withAuth(async (request, user) => {
   try {
     const data = await request.json();
     
-    if (!data.name || !data.category || !data.price) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: name, category, price'
-        },
-        { status: 400 }
-      );
+    // Validation centralisée
+    const validation = validateProductData(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Create Product');
     }
     
     const product = await createProduct(data);
     
-    return NextResponse.json({
-      success: true,
-      data: product
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error in POST /api/products:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create product',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      product, 
+      'Product created successfully', 
+      201
     );
+  } catch (error) {
+    return handleApiError(error, 'Create Product');
   }
-}
+}, ['admin', 'dispatcher']);

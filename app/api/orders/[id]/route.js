@@ -1,139 +1,103 @@
-import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-middleware';
+import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getOrderById, updateOrder, deleteOrder } from '@/lib/db';
-import { verifyToken, unauthorizedResponse, forbiddenResponse, verifyRole } from '@/lib/auth-middleware';
+import { validateOrderUpdate } from '@/lib/validation';
 
-export async function GET(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const GET = withAuth(async (request, user) => {
   try {
     const { id } = await params;
-    const order = await getOrderById(id, authResult.user.id, authResult.user.role);
+    const order = await getOrderById(id, user.id, user.role);
     
     if (!order) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Order not found or access denied'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Order not found or access denied'), 'Get Order');
     }
     
-    return NextResponse.json({
-      success: true,
-      data: order
-    });
-  } catch (error) {
-    console.error('Error in GET /api/orders/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch order',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      order, 
+      null, 
+      200, 
+      { 
+        user_role: user.role,
+        access_level: user.role === 'client' ? 'own_orders_only' : 'all_orders'
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Get Order');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function PUT(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const PUT = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     const data = await request.json();
     
-    // Vérifier que la commande existe et appartient à l'utilisateur (si client)
-    const existingOrder = await getOrderById(id, authResult.user.id, authResult.user.role);
-    
-    if (!existingOrder) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Order not found or access denied'
-        },
-        { status: 404 }
-      );
+    // Validation centralisée
+    const validation = validateOrderUpdate(data);
+    if (validation.error) {
+      return handleApiError(validation.error, 'Update Order');
     }
     
-    // Si client, vérifier que la commande est en pending
-    if (authResult.user.role === 'client' && existingOrder.status !== 'pending') {
-      return forbiddenResponse('Cannot modify order that is not pending');
+    // Vérifier que la commande existe et permissions
+    const existingOrder = await getOrderById(id, user.id, user.role);
+    if (!existingOrder) {
+      return handleApiError(new Error('Order not found or access denied'), 'Update Order');
+    }
+    
+    // Logique métier : clients ne peuvent modifier que les commandes pending
+    if (user.role === 'client' && existingOrder.status !== 'pending') {
+      return handleApiError(
+        new Error('Cannot modify order that is not pending'), 
+        'Update Order'
+      );
     }
     
     const order = await updateOrder(id, data);
     
-    return NextResponse.json({
-      success: true,
-      data: order
-    });
-  } catch (error) {
-    console.error('Error in PUT /api/orders/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update order',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      order, 
+      'Order updated successfully', 
+      200,
+      { 
+        updated_by: user.role,
+        previous_status: existingOrder.status,
+        new_status: order.status
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Update Order');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
 
-export async function DELETE(request, { params }) {
-  // Vérifier le token JWT
-  const authResult = verifyToken(request);
-  
-  if (authResult.error) {
-    return unauthorizedResponse(authResult.error);
-  }
-
+export const DELETE = withAuth(async (request, user) => {
   try {
     const { id } = await params;
     
-    // Vérifier que la commande existe et appartient à l'utilisateur (si client)
-    const existingOrder = await getOrderById(id, authResult.user.id, authResult.user.role);
-    
+    // Vérifier que la commande existe et permissions
+    const existingOrder = await getOrderById(id, user.id, user.role);
     if (!existingOrder) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Order not found or access denied'
-        },
-        { status: 404 }
-      );
+      return handleApiError(new Error('Order not found or access denied'), 'Delete Order');
     }
     
-    // Si client, vérifier que la commande est en pending
-    if (authResult.user.role === 'client' && existingOrder.status !== 'pending') {
-      return forbiddenResponse('Cannot delete order that is not pending');
+    // Logique métier : clients ne peuvent supprimer que les commandes pending
+    if (user.role === 'client' && existingOrder.status !== 'pending') {
+      return handleApiError(
+        new Error('Cannot delete order that is not pending'), 
+        'Delete Order'
+      );
     }
     
     await deleteOrder(id);
     
-    return NextResponse.json({
-      success: true,
-      message: 'Order deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error in DELETE /api/orders/[id]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete order',
-        message: error.message
-      },
-      { status: 500 }
+    return createSuccessResponse(
+      null, 
+      'Order deleted successfully', 
+      200,
+      { 
+        deleted_by: user.role,
+        deleted_order_status: existingOrder.status
+      }
     );
+  } catch (error) {
+    return handleApiError(error, 'Delete Order');
   }
-}
+}, ['admin', 'dispatcher', 'deliverer', 'client']);
