@@ -1,10 +1,12 @@
 -- ================================================
--- Fresh Dessert App - Feature: API Products
+-- Fresh Dessert App - Feature: API Orders
 -- ================================================
--- Branch: feature/api-products
--- Tables: users + deliverers + products
+-- Branch: feature/api-orders
+-- Tables: users + deliverers + products + orders + order_items
 -- ================================================
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS deliverers;
 DROP TABLE IF EXISTS users;
@@ -100,3 +102,41 @@ INSERT INTO products (name, description, category, price, allergens, emoji, acti
 ('Kinder Bueno White', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Kinder Bueno White, coulis Nutella, coulis Bueno White', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE),
 ('Kinder Bueno', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Kinder Bueno, coulis Nutella, coulis Bueno', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE),
 ('Kinder Schokobon', 'Mascarpone, œufs, crème, sucre, biscuit cuillère, Schokobon, coulis Nutella', 'tiramisu', 8.50, 'Lait, Œufs, Gluten, Fruits à coque, Soja', '⭐', TRUE);
+
+-- ================================================
+-- Table 4: orders - Commandes
+-- ================================================
+CREATE TABLE orders (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  status ENUM('pending', 'confirmed', 'preparing', 'ready', 'delivering', 'delivered', 'cancelled') NOT NULL DEFAULT 'pending',
+  total_price DECIMAL(10, 2) NOT NULL,
+  delivery_address TEXT NOT NULL,
+  delivery_date DATETIME,
+  notes TEXT,
+  deliverer_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (deliverer_id) REFERENCES deliverers(id) ON DELETE SET NULL,
+  INDEX idx_user_id (user_id),
+  INDEX idx_status (status),
+  INDEX idx_deliverer_id (deliverer_id),
+  INDEX idx_delivery_date (delivery_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================
+-- Table 5: order_items - Lignes de commande
+-- ================================================
+CREATE TABLE order_items (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  order_id INT NOT NULL,
+  product_id INT NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price DECIMAL(10, 2) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  INDEX idx_order_id (order_id),
+  INDEX idx_product_id (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
