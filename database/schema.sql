@@ -1,10 +1,12 @@
 -- ================================================
--- Fresh Dessert App - Feature: API Deliveries
+-- Fresh Dessert App - Feature: API Addresses
 -- ================================================
--- Branch: feature/api-deliveries
--- Tables: users + deliverers + products + orders + order_items + deliveries
+-- Branch: feature/api-addresses
+-- Tables: users + deliverers + products + deliveries + orders + order_items + addresses
 -- ================================================
+
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS addresses;
 DROP TABLE IF EXISTS deliveries;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
@@ -122,6 +124,29 @@ CREATE TABLE deliveries (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ================================================
+-- Table 4: addresses - Adresses de livraison
+-- ================================================
+CREATE TABLE addresses (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  label VARCHAR(50),
+  street_address VARCHAR(255) NOT NULL,
+  city VARCHAR(100) NOT NULL,
+  postal_code VARCHAR(10) NOT NULL,
+  floor VARCHAR(20),
+  door_number VARCHAR(20),
+  building_code VARCHAR(50),
+  intercom VARCHAR(50),
+  delivery_instructions TEXT,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_user (user_id),
+  INDEX idx_default (user_id, is_default)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================
 -- Table 4: orders - Commandes
 -- ================================================
 CREATE TABLE orders (
@@ -129,6 +154,7 @@ CREATE TABLE orders (
   user_id INT NOT NULL,
   status ENUM('pending', 'confirmed', 'preparing', 'ready', 'delivering', 'delivered', 'cancelled') NOT NULL DEFAULT 'pending',
   total_price DECIMAL(10, 2) NOT NULL,
+  address_id INT,
   delivery_address TEXT NOT NULL,
   delivery_date DATETIME,
   notes TEXT,
@@ -139,6 +165,7 @@ CREATE TABLE orders (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (deliverer_id) REFERENCES deliverers(id) ON DELETE SET NULL,
   FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE SET NULL,
+  FOREIGN KEY (address_id) REFERENCES addresses(id) ON DELETE SET NULL,
   INDEX idx_user_id (user_id),
   INDEX idx_status (status),
   INDEX idx_deliverer_id (deliverer_id),
