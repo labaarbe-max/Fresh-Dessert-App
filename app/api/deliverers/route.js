@@ -44,3 +44,50 @@ export async function GET(request) {
     );
   }
 }
+
+export async function POST(request) {
+  // Vérifier le token JWT
+  const authResult = verifyToken(request);
+  
+  if (authResult.error) {
+    return unauthorizedResponse(authResult.error);
+  }
+
+  // Vérifier le rôle (seuls admin et dispatcher peuvent créer des livreurs)
+  const roleCheck = verifyRole(authResult.user, ['admin', 'dispatcher']);
+  if (roleCheck.error) {
+    return forbiddenResponse(roleCheck.error);
+  }
+
+  try {
+    const data = await request.json();
+    
+    // Validation des champs requis
+    if (!data.user_id || !data.vehicle_type) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required fields: user_id, vehicle_type'
+        },
+        { status: 400 }
+      );
+    }
+    
+    const deliverer = await createDeliverer(data);
+    
+    return NextResponse.json({
+      success: true,
+      data: deliverer
+    }, { status: 201 });
+  } catch (error) {
+    console.error('Error in POST /api/deliverers:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create deliverer',
+        message: error.message
+      },
+      { status: 500 }
+    );
+  }
+}

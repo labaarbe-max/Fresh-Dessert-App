@@ -1,11 +1,12 @@
 -- ================================================
--- Fresh Dessert App - Feature: API Addresses
+-- Fresh Dessert App - Feature: API Stocks
 -- ================================================
--- Branch: feature/api-addresses
--- Tables: users + deliverers + products + deliveries + orders + order_items + addresses
+-- Branch: feature/api-stocks
+-- Tables: users + deliverers + products + deliveries + addresses + orders + order_items + delivery_stocks
 -- ================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS delivery_stocks;
 DROP TABLE IF EXISTS addresses;
 DROP TABLE IF EXISTS deliveries;
 DROP TABLE IF EXISTS order_items;
@@ -121,6 +122,25 @@ CREATE TABLE deliveries (
   INDEX idx_deliverer_id (deliverer_id),
   INDEX idx_delivery_date (delivery_date),
   INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================
+-- Table 4: delivery_stocks - Stocks par tournée
+-- ================================================
+CREATE TABLE delivery_stocks (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  delivery_id INT NOT NULL,
+  product_id INT NOT NULL,
+  initial_quantity INT NOT NULL DEFAULT 0,
+  current_quantity INT NOT NULL DEFAULT 0,
+  sold_quantity INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_delivery_product (delivery_id, product_id),
+  INDEX idx_delivery (delivery_id),
+  INDEX idx_product (product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ================================================
