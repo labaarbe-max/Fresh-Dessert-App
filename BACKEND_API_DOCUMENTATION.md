@@ -1,42 +1,19 @@
-# 📚 Backend API Documentation - Fresh Dessert App
+# 📚 Backend API Documentation - Fresh Dessert
 
-> Documentation complète de l'API backend Next.js 16.1.1 avec architecture centralisée
+> Documentation complète du backend Node.js/Express pour migration vers Next.js
 
 ---
 
 ## 🎯 Vue d'ensemble
 
-**Stack technique :**
-- **Next.js 16.1.1** - App Router avec API routes
-- **MySQL** - Base de données via mysql2/promise
-- **JWT** - Authentification avec tokens
-- **Rate Limiting** - Protection Upstash Redis
-- **TypeScript** - Typage strict
+**Stack actuelle :**
+- Node.js + Express
+- MySQL (via mysql2/promise)
+- OpenAI GPT-4 Vision (extraction)
+- Trello API (webhooks + création de cartes)
 
-**Port :** 3000 (développement) / Production (Vercel)  
-**Base de données :** `fresh_dessert_app`
-
----
-
-## 🏗️ Architecture Centralisée
-
-### **📁 Services lib (7 fichiers)**
-```
-lib/
-├── api-middleware.js     # Middleware universel withAuth
-├── auth-middleware.js    # JWT, rôles, réponses HTTP
-├── error-handler.js      # Gestion erreurs centralisée
-├── validation.js         # 17 validateurs réutilisables
-├── db.js                # 40 fonctions DB optimisées
-├── rate-limit.js         # Rate limiting Upstash Redis
-└── stock-service.js      # Logique métier stocks
-```
-
-### **🔐 Patterns standardisés**
-- **`withAuth`** - Middleware authentification + rôles
-- **`createSuccessResponse`** - Format réponse uniforme
-- **`handleApiError`** - Gestion erreurs centralisée
-- **`validate*`** - Validation centralisée par type
+**Port :** 3000  
+**Base de données :** `ubereats_extractor`
 
 ---
 
@@ -44,708 +21,747 @@ lib/
 
 ### Tables principales
 
-#### 1. `users` - Utilisateurs globaux
+#### 1. `livreurs` - Livreurs/Dispatch
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-email VARCHAR(255) UNIQUE NOT NULL
-password_hash VARCHAR(255) NOT NULL
-first_name VARCHAR(100) NOT NULL
-last_name VARCHAR(100) NOT NULL
-phone VARCHAR(20)
-role ENUM('client', 'deliverer', 'dispatcher', 'admin') NOT NULL
-active BOOLEAN DEFAULT TRUE
-email_verified BOOLEAN DEFAULT FALSE
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+nom VARCHAR(100) UNIQUE NOT NULL
+trello_list_id VARCHAR(100) NOT NULL
+actif BOOLEAN DEFAULT TRUE
+created_at TIMESTAMP
+updated_at TIMESTAMP
 ```
 
-#### 2. `deliverers` - Livreurs
+**Livreurs pré-chargés :** Nassim, AbdelKarim, Dispatch, AbdelRahman, Mounir, Wissem
+
+#### 2. `commandes` - Historique des commandes
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-user_id INT (FK → users.id)
-vehicle_type ENUM('bike', 'scooter', 'car', 'van')
-license_plate VARCHAR(20)
-is_available BOOLEAN DEFAULT TRUE
-current_latitude DECIMAL(10, 8)
-current_longitude DECIMAL(11, 8)
-rating DECIMAL(3, 2) DEFAULT 5.0
-total_deliveries INT DEFAULT 0
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+session_id VARCHAR(100) NOT NULL
+livreur_id INT (FK → livreurs.id)
+client_nom VARCHAR(200)
+client_code VARCHAR(50)
+nouveau_client BOOLEAN
+departement VARCHAR(10)
+adresse_complete TEXT
+complement_adresse TEXT
+instructions TEXT
+type_livraison VARCHAR(100)
+telephone VARCHAR(50)
+code_uber VARCHAR(50)
+type_numero VARCHAR(20)
+temps_livraison VARCHAR(50)
+articles VARCHAR(50)
+couverts VARCHAR(10)
+sous_total VARCHAR(20)
+frais_livraison VARCHAR(20)
+offre_speciale VARCHAR(20)
+total VARCHAR(20)
+data_json JSON
+trello_card_id VARCHAR(100)
+trello_card_url TEXT
+created_at TIMESTAMP
 ```
 
-#### 3. `products` - Produits
+#### 3. `produits` - Catalogue produits
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-name VARCHAR(255) NOT NULL
-description TEXT
-price DECIMAL(10, 2) NOT NULL
-category VARCHAR(100)
-image_url VARCHAR(500)
-available BOOLEAN DEFAULT TRUE
-preparation_time INT DEFAULT 15 -- minutes
-allergens JSON
-nutrition_info JSON
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+nom VARCHAR(200) UNIQUE NOT NULL
+categorie ENUM('tiramisu', 'gaufre', 'patisserie', 'boisson', 'confiserie')
+emoji VARCHAR(10)
+actif BOOLEAN DEFAULT TRUE
+created_at TIMESTAMP
+updated_at TIMESTAMP
 ```
 
-#### 4. `orders` - Commandes
+**50 produits pré-chargés :**
+- 12 Tiramisus (Kinder Bueno, Nutella, Oreo, etc.)
+- 3 Gaufres
+- 10 Pâtisseries (Cookies, Donuts, Macarons, etc.)
+- 12 Boissons (Chill, Oasis, Coca, etc.)
+- 7 Confiseries (Kinder, M&M's, Twix, etc.)
+
+#### 4. `tournees` - Tournées de livraison
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-user_id INT (FK → users.id)
-status ENUM('pending', 'confirmed', 'preparing', 'ready', 'delivering', 'delivered', 'cancelled') DEFAULT 'pending'
-total_amount DECIMAL(10, 2) NOT NULL
-delivery_address TEXT
-delivery_instructions TEXT
-estimated_delivery TIMESTAMP
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+date_tournee DATE NOT NULL
+statut ENUM('en_preparation', 'en_cours', 'terminee')
+created_at TIMESTAMP
+updated_at TIMESTAMP
 ```
 
-#### 5. `order_items` - Articles commande
+#### 5. `tournee_livreurs` - Association tournée-livreur
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-order_id INT (FK → orders.id)
-product_id INT (FK → products.id)
-quantity INT NOT NULL
-unit_price DECIMAL(10, 2) NOT NULL
-customizations JSON
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+tournee_id INT (FK → tournees.id)
+livreur_id INT (FK → livreurs.id)
+secteur VARCHAR(100)
+created_at TIMESTAMP
+UNIQUE (tournee_id, livreur_id)
 ```
 
-#### 6. `deliveries` - Livraisons
+#### 6. `tournee_stocks` - Stocks par livreur/tournée
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-order_id INT (FK → orders.id)
-deliverer_id INT (FK → deliverers.id)
-status ENUM('assigned', 'preparing', 'picked_up', 'in_transit', 'delivered', 'cancelled') DEFAULT 'assigned'
-pickup_address TEXT
-delivery_address TEXT
-estimated_pickup TIMESTAMP
-estimated_delivery TIMESTAMP
-actual_pickup TIMESTAMP
-actual_delivery TIMESTAMP
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+tournee_livreur_id INT (FK → tournee_livreurs.id)
+produit_id INT (FK → produits.id)
+quantite_initiale INT
+quantite_actuelle INT
+created_at TIMESTAMP
+updated_at TIMESTAMP
+UNIQUE (tournee_livreur_id, produit_id)
 ```
 
-#### 7. `stocks` - Stocks
+#### 7. `stock_mouvements` - Historique des mouvements
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-product_id INT (FK → products.id)
-quantity INT NOT NULL DEFAULT 0
-reserved_quantity INT NOT NULL DEFAULT 0
-available_quantity INT GENERATED ALWAYS AS (quantity - reserved_quantity) STORED
-last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+tournee_stock_id INT (FK → tournee_stocks.id)
+commande_id INT (FK → commandes.id)
+type_mouvement ENUM('initialisation', 'livraison', 'ajustement')
+quantite INT
+quantite_avant INT
+quantite_apres INT
+commentaire TEXT
+created_at TIMESTAMP
 ```
 
-#### 8. `delivery_stocks` - Stocks par tournée
+#### 8. `commande_produits` - Produits dans les commandes
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-delivery_id INT (FK → deliveries.id)
-product_id INT (FK → products.id)
-quantity_reserved INT NOT NULL
-quantity_used INT DEFAULT 0
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+commande_id INT (FK → commandes.id)
+produit_id INT (FK → produits.id)
+quantite INT DEFAULT 1
+created_at TIMESTAMP
 ```
-
-#### 9. `addresses` - Adresses clients
-```sql
-id INT PRIMARY KEY AUTO_INCREMENT
-user_id INT (FK → users.id)
-type ENUM('home', 'work', 'other') DEFAULT 'home'
-street VARCHAR(255) NOT NULL
-city VARCHAR(100) NOT NULL
-postal_code VARCHAR(20) NOT NULL
-country VARCHAR(100) DEFAULT 'France'
-latitude DECIMAL(10, 8)
-longitude DECIMAL(11, 8)
-is_default BOOLEAN DEFAULT FALSE
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
----
-
-## 🔐 Authentification & Sécurité
-
-### **JWT Tokens**
-```javascript
-// Structure token JWT
-{
-  "id": 123,
-  "email": "user@example.com",
-  "role": "client",
-  "first_name": "John",
-  "last_name": "Doe",
-  "iat": 1640995200,
-  "exp": 1641081600 // 30 jours
-}
-```
-
-### **Rôles & Permissions**
-- **Admin** - Accès complet à toutes les ressources
-- **Dispatcher** - Gestion commandes, livraisons, livreurs
-- **Deliverer** - Gestion propres livraisons uniquement
-- **Client** - Gestion propres commandes et adresses
-
-### **Rate Limiting**
-- **Endpoints auth** - 5 requêtes/minute par IP
-- **Endpoints API** - 100 requêtes/minute par IP
-- **Provider** - Upstash Redis
 
 ---
 
-## 📋 Endpoints API (26 endpoints)
+## 🔌 Endpoints API
 
-### **🔐 Authentication (3 endpoints)**
+### 🖼️ Extraction (GPT-4 Vision)
 
-#### **POST /api/auth/login**
-**Description** - Connexion utilisateur
-**Rôles** - Public (rate limité)
-**Body** :
+#### `POST /api/extract`
+Extraction complète d'une commande UberEats
+
+**Request :**
 ```json
 {
-  "email": "user@example.com",
-  "password": "password123"
+  "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
 }
 ```
-**Réponse** :
+
+**Response :**
 ```json
 {
-  "success": true,
-  "data": {
-    "user": {
-      "id": 123,
-      "email": "user@example.com",
-      "role": "client",
-      "first_name": "John",
-      "last_name": "Doe"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "client": {
+    "nom": "John Doe",
+    "code": "JD123",
+    "nouveauClient": false
   },
-  "message": "Login successful",
-  "metadata": {
-    "login_time": "2025-01-07T20:00:00Z",
-    "expires_in": 2592000
+  "livraison": {
+    "departement": "75",
+    "adresseComplete": "123 Rue de Paris, 75001 Paris",
+    "complementAdresse": "Bâtiment A, 2ème étage",
+    "instructions": "Sonner à l'interphone",
+    "typeLivraison": "Livraison standard",
+    "telephone": "0612345678",
+    "codeUber": "ABC123",
+    "typeNumero": "mobile",
+    "tempsLivraison": "30-40 min"
+  },
+  "commande": {
+    "articles": "3 articles",
+    "couverts": "2"
+  },
+  "montants": {
+    "sousTotal": "25.50€",
+    "fraisLivraison": "2.50€",
+    "offreSpeciale": "-3.00€",
+    "total": "25.00€"
+  },
+  "meta": {
+    "confidence": 0.95,
+    "duration": 1234,
+    "timestamp": "2024-01-04T00:00:00.000Z"
   }
 }
 ```
 
-#### **POST /api/auth/register**
-**Description** - Inscription nouvel utilisateur
-**Rôles** - Public (rate limité)
-**Body** :
-```json
-{
-  "email": "newuser@example.com",
-  "password": "SecurePassword123!",
-  "first_name": "Jane",
-  "last_name": "Doe",
-  "phone": "+33612345678",
-  "role": "client"
-}
-```
+#### `POST /api/extract-commande`
+Extraction étape 1 : Informations commande
 
-#### **POST /api/auth/change-password**
-**Description** - Changement mot de passe
-**Rôles** - Authentifié
-**Headers** : `Authorization: Bearer <token>`
-**Body** :
-```json
-{
-  "current_password": "oldpassword123",
-  "new_password": "NewSecurePassword123!"
-}
-```
+#### `POST /api/extract-adresse`
+Extraction étape 2 : Adresse de livraison
 
 ---
 
-### **📦 Products (2 endpoints)**
+### 👥 Livreurs
 
-#### **GET /api/products**
-**Description** - Liste tous les produits
-**Rôles** - Authentifié
-**Query params** :
-- `category` - Filtrer par catégorie
-- `available` - `true/false` (défaut: true)
-- `limit` - Nombre de résultats (défaut: 50)
-- `offset` - Pagination (défaut: 0)
+#### `GET /api/livreurs`
+Récupérer tous les livreurs actifs
 
-**Réponse** :
+**Response :**
 ```json
 {
   "success": true,
-  "data": [
+  "livreurs": [
     {
       "id": 1,
-      "name": "Tiramisu Classique",
-      "description": "Dessert italien traditionnel",
-      "price": 8.50,
-      "category": "desserts_italiens",
-      "image_url": "https://example.com/tiramisu.jpg",
-      "available": true,
-      "preparation_time": 15,
-      "allergens": ["gluten", "lactose"]
+      "nom": "Nassim",
+      "trello_list_id": "6933aa997706312a9be6c9e6",
+      "actif": true,
+      "created_at": "2024-01-01T00:00:00.000Z"
     }
-  ],
-  "count": 25,
-  "metadata": {
-    "total": 25,
-    "page": 1,
-    "per_page": 50
-  }
+  ]
 }
 ```
 
-#### **GET /api/products/[id]**
-**Description** - Détails d'un produit
-**Rôles** - Authentifié
-**Réponse** :
+#### `GET /api/livreurs/:id`
+Récupérer un livreur par ID
+
+#### `POST /api/livreurs`
+Créer un nouveau livreur
+
+**Request :**
 ```json
 {
-  "success": true,
-  "data": {
-    "id": 1,
-    "name": "Tiramisu Classique",
-    "description": "Dessert italien traditionnel avec mascarpone et café",
-    "price": 8.50,
-    "category": "desserts_italiens",
-    "image_url": "https://example.com/tiramisu.jpg",
-    "available": true,
-    "preparation_time": 15,
-    "allergens": ["gluten", "lactose"],
-    "nutrition_info": {
-      "calories": 350,
-      "protein": 6,
-      "carbs": 28,
-      "fat": 24
-    }
-  }
+  "nom": "Nouveau Livreur",
+  "trelloListId": "trello_list_id_123"
 }
 ```
 
+#### `PUT /api/livreurs/:id`
+Mettre à jour un livreur
+
+#### `DELETE /api/livreurs/:id`
+Désactiver un livreur (soft delete)
+
 ---
 
-### **🛒 Orders (2 endpoints)**
+### 📦 Trello
 
-#### **GET /api/orders**
-**Description** - Liste des commandes
-**Rôles** - Authentifié
-**Query params** :
-- `status` - Filtrer par statut
-- `user_id` - Admin/dispatcher uniquement
-- `limit` - Pagination
-- `offset` - Pagination
+#### `POST /api/send-to-trello`
+Envoyer une commande à Trello
 
-#### **POST /api/orders**
-**Description** - Créer nouvelle commande
-**Rôles** - Authentifié (client, dispatcher, admin)
-**Body** :
+**Request :**
 ```json
 {
-  "items": [
-    {
-      "product_id": 1,
-      "quantity": 2,
-      "customizations": {
-        "extra_cream": true,
-        "size": "large"
-      }
-    }
-  ],
-  "delivery_address": "123 Rue de la Paix, 75001 Paris",
-  "delivery_instructions": "Sonner à l'interphone 3B",
-  "estimated_delivery": "2025-01-07T21:00:00Z"
-}
-```
-
-#### **GET /api/orders/[id]**
-**Description** - Détails commande
-**Rôles** - Authentifié (accès limité par rôle/user)
-
-#### **PUT /api/orders/[id]**
-**Description** - Mettre à jour commande
-**Rôles** - Authentifié (permissions par rôle)
-
-#### **DELETE /api/orders/[id]**
-**Description** - Annuler commande
-**Rôles** - Authentifié (permissions par rôle)
-
----
-
-### **🚚 Deliveries (2 endpoints)**
-
-#### **GET /api/deliveries**
-**Description** - Liste livraisons
-**Rôles** - Authentifié
-**Query params** :
-- `status` - Filtrer par statut
-- `deliverer_id` - Filtrer par livreur
-- `date` - Filtrer par date
-
-#### **POST /api/deliveries**
-**Description** - Créer livraison
-**Rôles** - Authentifié (dispatcher, admin)
-
-#### **GET /api/deliveries/[id]**
-**Description** - Détails livraison
-**Rôles** - Authentifié
-
-#### **PUT /api/deliveries/[id]**
-**Description** - Mettre à jour livraison
-**Rôles** - Authentifié (livreur peut mettre à jour statut)
-
-#### **DELETE /api/deliveries/[id]**
-**Description** - Annuler livraison
-**Rôles** - Authentifié (dispatcher, admin)
-
----
-
-### **👥 Deliverers (2 endpoints)**
-
-#### **GET /api/deliverers**
-**Description** - Liste livreurs
-**Rôles** - Authentifié (admin, dispatcher)
-**Query params** :
-- `active_only` - `true/false` (défaut: false)
-
-#### **POST /api/deliverers**
-**Description** - Créer livreur
-**Rôles** - Authentifié (admin, dispatcher)
-**Body** :
-```json
-{
-  "user_id": 123,
-  "vehicle_type": "bike",
-  "license_plate": "ABC-123",
-  "is_available": true
-}
-```
-
-#### **GET /api/deliverers/[id]**
-**Description** - Détails livreur
-**Rôles** - Authentifié (admin, dispatcher, livreur lui-même)
-
-#### **PUT /api/deliverers/[id]**
-**Description** - Mettre à jour livreur
-**Rôles** - Authentifié (admin, dispatcher, livreur lui-même limité)
-
-#### **DELETE /api/deliverers/[id]**
-**Description** - Supprimer livreur (désactiver)
-**Rôles** - Authentifié (admin, dispatcher)
-
----
-
-### **📍 Addresses (2 endpoints)**
-
-#### **GET /api/addresses**
-**Description** - Adresses utilisateur
-**Rôles** - Authentifié (propres adresses)
-
-#### **POST /api/addresses**
-**Description** - Ajouter adresse
-**Rôles** - Authentifié
-**Body** :
-```json
-{
-  "type": "home",
-  "street": "123 Rue de la Paix",
-  "city": "Paris",
-  "postal_code": "75001",
-  "country": "France",
-  "is_default": true
-}
-```
-
-#### **GET /api/addresses/[id]**
-**Description** - Détails adresse
-**Rôles** - Authentifié (propre adresse)
-
-#### **PUT /api/addresses/[id]**
-**Description** - Mettre à jour adresse
-**Rôles** - Authentifié (propre adresse)
-
-#### **DELETE /api/addresses/[id]**
-**Description** - Supprimer adresse
-**Rôles** - Authentifié (propre adresse)
-
----
-
-### **📦 Stocks (3 endpoints)**
-
-#### **GET /api/stocks**
-**Description** - État des stocks
-**Rôles** - Authentifié (admin, dispatcher)
-**Query params** :
-- `product_id` - Filtrer par produit
-- `low_stock` - `true/false` (stock < 10)
-
-#### **POST /api/stocks**
-**Description** - Mettre à jour stock
-**Rôles** - Authentifié (admin, dispatcher)
-**Body** :
-```json
-{
-  "product_id": 1,
-  "quantity": 50,
-  "operation": "set" // "set", "add", "subtract"
-}
-```
-
-#### **GET /api/stocks/[id]**
-**Description** - Détails stock produit
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **PUT /api/stocks/[id]**
-**Description** - Mettre à jour stock produit
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stocks/delivery/[id]**
-**Description** - Stocks réservés pour livraison
-**Rôles** - Authentifié (admin, dispatcher, livreur concerné)
-
----
-
-### **📊 Stats (8 endpoints)**
-
-#### **GET /api/stats/dashboard**
-**Description** - KPIs dashboard
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/deliverers**
-**Description** - Performance livreurs
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/revenue**
-**Description** - Chiffre d'affaires
-**Rôles** - Authentifié (admin)
-**Query params** :
-- `period` - `day`, `week`, `month`, `year`
-- `start_date` - Date début
-- `end_date` - Date fin
-
-#### **GET /api/stats/products**
-**Description** - Statistiques produits
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/geography**
-**Description** - Statistiques géographiques
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/stocks**
-**Description** - Statistiques stocks
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/timeline**
-**Description** - Évolution temporelle
-**Rôles** - Authentifié (admin, dispatcher)
-
-#### **GET /api/stats/tours**
-**Description** - Statistiques tournées
-**Rôles** - Authentifié (admin, dispatcher)
-
----
-
-### **💚 Health (1 endpoint)**
-
-#### **GET /api/health**
-**Description** - Health check service
-**Rôles** - Public
-**Réponse** :
-```json
-{
-  "success": true,
-  "data": {
-    "status": "healthy",
-    "timestamp": "2025-01-07T20:00:00Z",
-    "version": "2.0.0",
-    "uptime": 86400,
-    "database": "connected",
-    "memory_usage": "45MB",
-    "active_connections": 12
-  }
-}
-```
-
----
-
-## 🔄 Format des Réponses
-
-### **Succès**
-```json
-{
-  "success": true,
-  "data": { /* données */ },
-  "message": "Opération réussie",
-  "metadata": {
-    "timestamp": "2025-01-07T20:00:00Z",
-    "request_id": "req_123456789",
-    "execution_time": "150ms"
-  }
-}
-```
-
-### **Erreur**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Données invalides",
-    "details": {
-      "field": "email",
-      "issue": "Format email invalide"
-    }
+  "commandeData": {
+    "client": { "nom": "John Doe", "code": "JD123" },
+    "livraison": { 
+      "adresseComplete": "123 Rue de Paris",
+      "telephone": "0612345678",
+      "departement": "75"
+    },
+    "commande": { "articles": "3 articles" },
+    "montants": { "total": "25.00€" }
   },
-  "metadata": {
-    "timestamp": "2025-01-07T20:00:00Z",
-    "request_id": "req_123456789"
+  "livreurId": 1,
+  "sessionId": "session_123"
+}
+```
+
+**Response :**
+```json
+{
+  "success": true,
+  "cardId": "trello_card_id_abc123",
+  "cardUrl": "https://trello.com/c/abc123",
+  "commandeId": 42
+}
+```
+
+#### `POST /api/webhook/trello`
+Recevoir les webhooks Trello
+
+**Actions gérées :**
+- Déplacement de carte → Mise à jour du livreur assigné
+- Archivage de carte → Marquage commande comme archivée
+
+---
+
+### 🍰 Produits
+
+#### `GET /api/produits`
+Récupérer tous les produits
+
+**Response :**
+```json
+{
+  "success": true,
+  "produits": [
+    {
+      "id": 1,
+      "nom": "Tiramisu Kinder Bueno White",
+      "categorie": "tiramisu",
+      "emoji": "⭐",
+      "actif": true
+    }
+  ]
+}
+```
+
+#### `GET /api/produits/categorie/:categorie`
+Récupérer les produits par catégorie
+
+**Catégories :** `tiramisu`, `gaufre`, `patisserie`, `boisson`, `confiserie`
+
+---
+
+### 🚚 Tournées
+
+#### `POST /api/tournees`
+Créer une nouvelle tournée
+
+**Request :**
+```json
+{
+  "dateTournee": "2024-01-04"
+}
+```
+
+**Response :**
+```json
+{
+  "success": true,
+  "tourneeId": 1
+}
+```
+
+#### `GET /api/tournees`
+Récupérer toutes les tournées avec leurs livreurs
+
+**Response :**
+```json
+{
+  "success": true,
+  "tournees": [
+    {
+      "id": 1,
+      "date_tournee": "2024-01-04",
+      "statut": "en_cours",
+      "livreurs": [
+        {
+          "tournee_livreur_id": 1,
+          "livreur_id": 1,
+          "livreur_nom": "Nassim",
+          "secteur": "75, 93"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `GET /api/tournees/:id`
+Récupérer une tournée par ID avec détails complets
+
+#### `PUT /api/tournees/:id/statut`
+Mettre à jour le statut d'une tournée
+
+**Request :**
+```json
+{
+  "statut": "en_cours"
+}
+```
+
+**Statuts :** `en_preparation`, `en_cours`, `terminee`
+
+#### `PUT /api/tournees/:id`
+Modifier une tournée
+
+#### `DELETE /api/tournees/:id`
+Supprimer une tournée
+
+---
+
+### 👤 Assignation Livreurs
+
+#### `POST /api/tournees/:id/livreurs`
+Assigner un livreur à une tournée
+
+**Request :**
+```json
+{
+  "livreurId": 1,
+  "secteur": "75, 93"
+}
+```
+
+**Response :**
+```json
+{
+  "success": true,
+  "tourneeLivreurId": 1
+}
+```
+
+#### `DELETE /api/tournees/livreurs/:id`
+Retirer un livreur d'une tournée
+
+**Params :** `id` = `tournee_livreur_id`
+
+---
+
+### 📦 Stocks
+
+#### `POST /api/tournees/livreurs/:id/stocks`
+Initialiser les stocks pour un livreur
+
+**Params :** `id` = `tournee_livreur_id`
+
+**Request :**
+```json
+{
+  "stocks": [
+    { "produitId": 1, "quantite": 10 },
+    { "produitId": 2, "quantite": 5 }
+  ]
+}
+```
+
+#### `GET /api/tournees/livreurs/:id/stocks`
+Récupérer les stocks d'un livreur
+
+**Response :**
+```json
+{
+  "success": true,
+  "stocks": [
+    {
+      "id": 1,
+      "produit_id": 1,
+      "produit_nom": "Tiramisu Kinder Bueno White",
+      "quantite_initiale": 10,
+      "quantite_actuelle": 8
+    }
+  ]
+}
+```
+
+#### `PUT /api/tournees/livreurs/:id/stocks`
+Modifier les stocks d'un livreur
+
+**Request :**
+```json
+{
+  "stocks": [
+    { "produitId": 1, "quantite": 15 }
+  ]
+}
+```
+
+---
+
+### 📋 Commandes
+
+#### `POST /api/commandes`
+Créer une nouvelle commande (depuis extension Chrome)
+
+**Request :**
+```json
+{
+  "nomClient": "John Doe",
+  "adresse": "123 Rue de Paris",
+  "telephone": "0612345678",
+  "departement": "75",
+  "total": "25.00€",
+  "sessionId": "session_123",
+  "tourneeId": 1
+}
+```
+
+#### `GET /api/commandes`
+Récupérer l'historique des commandes
+
+**Query params :**
+- `limit` (default: 50)
+- `offset` (default: 0)
+
+**Response :**
+```json
+{
+  "success": true,
+  "commandes": [
+    {
+      "id": 1,
+      "client_nom": "John Doe",
+      "adresse_complete": "123 Rue de Paris",
+      "total": "25.00€",
+      "livreur_nom": "Nassim",
+      "created_at": "2024-01-04T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### `GET /api/commandes/:id`
+Récupérer une commande par ID
+
+#### `PUT /api/commandes/:id/livreur`
+Assigner une commande à un livreur
+
+**Request :**
+```json
+{
+  "livreurId": 1
+}
+```
+
+#### `PUT /api/commandes/:id/statut`
+Changer le statut d'une commande
+
+**Request :**
+```json
+{
+  "statut": "livree"
+}
+```
+
+#### `GET /api/tournees/:id/commandes`
+Récupérer les commandes d'une tournée
+
+#### `GET /api/livreurs/:id/commandes`
+Récupérer les commandes d'un livreur
+
+**Query params :**
+- `tourneeId` (optionnel)
+
+---
+
+### 📊 Statistiques
+
+#### `GET /api/stock-movements`
+Récupérer l'historique des mouvements de stock
+
+**Query params :**
+- `limit` (default: 50)
+
+#### `GET /api/stats`
+Récupérer les statistiques globales
+
+**Response :**
+```json
+{
+  "success": true,
+  "stats": {
+    "totalCommandes": 150,
+    "commandesAujourdhui": 12,
+    "livreurActifs": 6,
+    "tourneesEnCours": 1
   }
 }
 ```
 
 ---
 
-## 🛡️ Gestion des Erreurs
+### 🏥 Health Check
 
-### **Codes d'erreur**
-- **400** - ValidationError (données invalides)
-- **401** - Unauthorized (non authentifié)
-- **403** - Forbidden (permissions insuffisantes)
-- **404** - NotFound (ressource inexistante)
-- **409** - Conflict (conflit de données)
-- **429** - TooManyRequests (rate limit)
-- **500** - InternalError (erreur serveur)
+#### `GET /api/health`
+Vérifier l'état du serveur
 
-### **Validation**
-- **Email** - Format RFC 5322
-- **Mot de passe** - 12+ caractères, 1 lettre, 1 chiffre, 1 spécial
-- **Téléphone** - Format international (+33...)
-- **Adresse** - Validation format postal
-
----
-
-## 📊 Performance & Monitoring
-
-### **Métriques**
-- **Temps de réponse** - <200ms (95th percentile)
-- **Taux d'erreur** - <1%
-- **Disponibilité** - >99.9%
-- **Concurrents** - 1000+ requêtes/minute
-
-### **Monitoring**
-- **Health checks** - `/api/health`
-- **Logging structuré** - JSON format
-- **Error tracking** - Sentry integration
-- **Performance** - New Relic/DataDog
-
----
-
-## 🔧 Development
-
-### **Environment Variables**
-```bash
-# Database
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=password
-DB_NAME=fresh_dessert_app
-
-# JWT
-NEXTAUTH_SECRET=your-secret-key
-
-# Rate Limiting
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
-
-# External Services
-STRIPE_SECRET_KEY=sk_...
-GOOGLE_MAPS_API_KEY=AIza...
-SENDGRID_API_KEY=SG...
-```
-
-### **Scripts**
-```bash
-npm run dev          # Développement
-npm run build        # Build production
-npm run start        # Production
-npm run test         # Tests unitaires
-npm run lint         # ESLint
-npm run type-check   # TypeScript checking
+**Response :**
+```json
+{
+  "status": "ok",
+  "service": "UberEats Extractor API",
+  "timestamp": "2024-01-04T00:00:00.000Z",
+  "uptime": 12345
+}
 ```
 
 ---
 
-## 📋 Testing
+## 🚀 Migration vers Next.js
 
-### **Tests unitaires**
-```bash
-# Tests services lib
-npm test lib/
+### Structure recommandée
 
-# Tests API endpoints
-npm test app/api/
-
-# Couverture code
-npm run test:coverage
+```
+app/
+├── api/
+│   ├── extract/route.js
+│   ├── extract-commande/route.js
+│   ├── extract-adresse/route.js
+│   ├── livreurs/
+│   │   ├── route.js
+│   │   └── [id]/
+│   │       ├── route.js
+│   │       └── commandes/route.js
+│   ├── tournees/
+│   │   ├── route.js
+│   │   └── [id]/
+│   │       ├── route.js
+│   │       ├── statut/route.js
+│   │       ├── livreurs/route.js
+│   │       └── commandes/route.js
+│   ├── commandes/
+│   │   ├── route.js
+│   │   └── [id]/
+│   │       ├── route.js
+│   │       ├── livreur/route.js
+│   │       └── statut/route.js
+│   ├── produits/
+│   │   ├── route.js
+│   │   └── categorie/[categorie]/route.js
+│   ├── send-to-trello/route.js
+│   ├── webhook/
+│   │   └── trello/route.js
+│   ├── stock-movements/route.js
+│   ├── stats/route.js
+│   └── health/route.js
+├── dashboard/page.js
+├── tournees/
+│   ├── page.js
+│   └── [id]/page.js
+├── commandes/page.js
+└── layout.js
 ```
 
-### **Tests intégration**
-```bash
-# Tests base de données
-npm run test:integration
+### Exemple de conversion
 
-# Tests authentification
-npm run test:auth
-
-# Tests validation
-npm run test:validation
+**Avant (Express) :**
+```javascript
+app.get('/api/livreurs', async (req, res) => {
+  try {
+    const livreurs = await db.getLivreurs(true);
+    res.json({ success: true, livreurs });
+  } catch (error) {
+    console.error('[API] Erreur getLivreurs:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
 ```
 
----
+**Après (Next.js) :**
+```javascript
+// app/api/livreurs/route.js
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-## 🚀 Deployment
+export async function GET() {
+  try {
+    const livreurs = await db.getLivreurs(true);
+    return NextResponse.json({ success: true, livreurs });
+  } catch (error) {
+    console.error('[API] Erreur getLivreurs:', error.message);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+```
 
-### **Production**
-- **Platform** - Vercel (recommandé)
-- **Database** - MySQL managed service
-- **Redis** - Upstash Redis
-- **Monitoring** - Vercel Analytics + Sentry
+### Exemple avec paramètres dynamiques
 
-### **Environment**
-- **Development** - Local + Vercel dev
-- **Staging** - Vercel preview
-- **Production** - Vercel production
+**Avant (Express) :**
+```javascript
+app.get('/api/tournees/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tournee = await db.getTourneeById(parseInt(id));
+    
+    if (!tournee) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Tournée non trouvée' 
+      });
+    }
+    
+    res.json({ success: true, tournee });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+```
 
----
+**Après (Next.js) :**
+```javascript
+// app/api/tournees/[id]/route.js
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-## 📚 Documentation Complémentaire
+export async function GET(request, { params }) {
+  try {
+    const { id } = params;
+    const tournee = await db.getTourneeById(parseInt(id));
+    
+    if (!tournee) {
+      return NextResponse.json(
+        { success: false, error: 'Tournée non trouvée' },
+        { status: 404 }
+      );
+    }
+    
+    return NextResponse.json({ success: true, tournee });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+```
 
-- **[CHANGELOG.md](./CHANGELOG.md)** - Historique des versions
-- **[FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md)** - Architecture frontend
-- **[USER_ROLES.md](./USER_ROLES.md)** - Rôles et permissions
-- **[BUSINESS_WORKFLOWS.md](./BUSINESS_WORKFLOWS.md)** - Workflows métier
-- **[INTEGRATIONS.md](./INTEGRATIONS.md)** - Services externes
-- **[MOBILE_APPS.md](./MOBILE_APPS.md)** - Spécifications mobiles
+### Exemple avec POST
 
----
+**Avant (Express) :**
+```javascript
+app.post('/api/tournees', async (req, res) => {
+  try {
+    const { dateTournee } = req.body;
+    
+    if (!dateTournee) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Date de tournée requise' 
+      });
+    }
+    
+    const tourneeId = await db.createTournee(dateTournee);
+    res.json({ success: true, tourneeId });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+```
 
-## 🎯 Roadmap Future
+**Après (Next.js) :**
+```javascript
+// app/api/tournees/route.js
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-### **Version 2.1.0** (Prévue)
-- **Tests unitaires** - Couverture complète
-- **Documentation OpenAPI** - Swagger UI
-- **Monitoring avancé** - Metrics détaillés
-
-### **Version 3.0.0** (Prévue)
-- **Real-time** - WebSockets tracking
-- **Analytics ML** - Prédictions intelligentes
-- **Multi-tenant** - Support multi-restaurants
-
----
-
-*Documentation maintenue automatiquement avec chaque mise à jour de l'API.*
+export async function POST(request) {
+  try {
+    const { dateTournee } = await request.json();
+    
+    if (!dateTournee) {
+      return NextResponse.json(
+        { success: false, error: 'Date de tournée requise' },
+        { status: 400 }
+      );
+    }
+    
+    const tourneeId = await db.createTournee(dateTournee);
+    return NextResponse.json({ success: true, tourneeId });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+```
 
 ---
 
