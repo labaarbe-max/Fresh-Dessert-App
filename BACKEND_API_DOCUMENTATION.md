@@ -10,7 +10,7 @@
 - Node.js + Express
 - MySQL (via mysql2/promise)
 - OpenAI GPT-4 Vision (extraction)
-- Trello API (webhooks + création de cartes)
+- Application mobile livreur (React Native)
 
 **Port :** 3000  
 **Base de données :** `ubereats_extractor`
@@ -24,9 +24,14 @@
 #### 1. `livreurs` - Livreurs/Dispatch
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-nom VARCHAR(100) UNIQUE NOT NULL
-trello_list_id VARCHAR(100) NOT NULL
-actif BOOLEAN DEFAULT TRUE
+user_id INT (FK → users.id)
+vehicle_type VARCHAR(50)
+phone VARCHAR(20)
+status ENUM('active', 'inactive', 'busy') DEFAULT 'active'
+current_latitude DECIMAL(10, 8)
+current_longitude DECIMAL(11, 8)
+rating DECIMAL(3, 2) DEFAULT 5.0
+total_deliveries INT DEFAULT 0
 created_at TIMESTAMP
 updated_at TIMESTAMP
 ```
@@ -57,8 +62,8 @@ frais_livraison VARCHAR(20)
 offre_speciale VARCHAR(20)
 total VARCHAR(20)
 data_json JSON
-trello_card_id VARCHAR(100)
-trello_card_url TEXT
+livraison_status ENUM('en_attente', 'assignee', 'en_cours', 'livree', 'annulee') DEFAULT 'en_attente'
+gps_tracking JSON
 created_at TIMESTAMP
 ```
 
@@ -206,9 +211,17 @@ Récupérer tous les livreurs actifs
   "livreurs": [
     {
       "id": 1,
-      "nom": "Nassim",
-      "trello_list_id": "6933aa997706312a9be6c9e6",
-      "actif": true,
+      "user_id": 5,
+      "email": "nassim@freshdessert.app",
+      "first_name": "Nassim",
+      "last_name": "Livreur",
+      "vehicle_type": "scooter",
+      "phone": "0612345678",
+      "status": "active",
+      "current_latitude": 48.8566,
+      "current_longitude": 2.3522,
+      "rating": 4.8,
+      "total_deliveries": 156,
       "created_at": "2024-01-01T00:00:00.000Z"
     }
   ]
@@ -224,8 +237,9 @@ Créer un nouveau livreur
 **Request :**
 ```json
 {
-  "nom": "Nouveau Livreur",
-  "trelloListId": "trello_list_id_123"
+  "user_id": 5,
+  "vehicle_type": "scooter",
+  "phone": "0612345678"
 }
 ```
 
@@ -237,45 +251,110 @@ Désactiver un livreur (soft delete)
 
 ---
 
-### 📦 Trello
+### 📱 Application Mobile Livreur
 
-#### `POST /api/send-to-trello`
-Envoyer une commande à Trello
+#### `GET /api/deliverer/my-deliveries`
+Récupérer les livraisons du jour pour le livreur connecté
 
-**Request :**
-```json
-{
-  "commandeData": {
-    "client": { "nom": "John Doe", "code": "JD123" },
-    "livraison": { 
-      "adresseComplete": "123 Rue de Paris",
-      "telephone": "0612345678",
-      "departement": "75"
-    },
-    "commande": { "articles": "3 articles" },
-    "montants": { "total": "25.00€" }
-  },
-  "livreurId": 1,
-  "sessionId": "session_123"
-}
-```
+**Headers :** `Authorization: Bearer <token>`
 
 **Response :**
 ```json
 {
   "success": true,
-  "cardId": "trello_card_id_abc123",
-  "cardUrl": "https://trello.com/c/abc123",
-  "commandeId": 42
+  "deliveries": [
+    {
+      "id": 1,
+      "client_nom": "John Doe",
+      "adresse_complete": "123 Rue de Paris",
+      "telephone": "0612345678",
+      "total": "25.00€",
+      "livraison_status": "assignee",
+      "gps_tracking": {
+        "latitude": 48.8566,
+        "longitude": 2.3522
+      },
+      "created_at": "2024-01-04T10:30:00.000Z"
+    }
+  ]
 }
 ```
 
-#### `POST /api/webhook/trello`
-Recevoir les webhooks Trello
+#### `PUT /api/deliverer/delivery-status`
+Mettre à jour le statut d'une livraison
 
-**Actions gérées :**
-- Déplacement de carte → Mise à jour du livreur assigné
-- Archivage de carte → Marquage commande comme archivée
+**Headers :** `Authorization: Bearer <token>`
+
+**Request :**
+```json
+{
+  "delivery_id": 1,
+  "status": "en_cours",
+  "gps_tracking": {
+    "latitude": 48.8566,
+    "longitude": 2.3522
+  }
+}
+```
+
+#### `GET /api/deliverer/my-stocks`
+Récupérer les stocks actuels du livreur
+
+**Headers :** `Authorization: Bearer <token>`
+
+**Response :**
+```json
+{
+  "success": true,
+  "stocks": [
+    {
+      "product_id": 1,
+      "product_name": "Tiramisu Kinder Bueno",
+      "quantity_assigned": 10,
+      "quantity_delivered": 3,
+      "quantity_remaining": 7
+    }
+  ]
+}
+```
+
+#### `POST /api/deliverer/gps-update`
+Mettre à jour la position GPS du livreur
+
+**Headers :** `Authorization: Bearer <token>`
+
+**Request :**
+```json
+{
+  "latitude": 48.8566,
+  "longitude": 2.3522
+}
+```
+
+#### `GET /api/deliverer/profile`
+Récupérer le profil du livreur connecté
+
+**Headers :** `Authorization: Bearer <token>`
+
+**Response :**
+```json
+{
+  "success": true,
+  "deliverer": {
+    "id": 1,
+    "email": "nassim@freshdessert.app",
+    "first_name": "Nassim",
+    "last_name": "Livreur",
+    "vehicle_type": "scooter",
+    "phone": "0612345678",
+    "status": "active",
+    "rating": 4.8,
+    "total_deliveries": 156,
+    "current_latitude": 48.8566,
+    "current_longitude": 2.3522
+  }
+}
+```
 
 ---
 
@@ -603,9 +682,12 @@ app/
 │   ├── produits/
 │   │   ├── route.js
 │   │   └── categorie/[categorie]/route.js
-│   ├── send-to-trello/route.js
-│   ├── webhook/
-│   │   └── trello/route.js
+│   ├── deliverer/
+│   │   ├── my-deliveries/route.js
+│   │   ├── delivery-status/route.js
+│   │   ├── my-stocks/route.js
+│   │   ├── gps-update/route.js
+│   │   └── profile/route.js
 │   ├── stock-movements/route.js
 │   ├── stats/route.js
 │   └── health/route.js
@@ -777,10 +859,10 @@ DB_NAME=ubereats_extractor
 # OpenAI
 OPENAI_API_KEY=sk-...
 
-# Trello
-TRELLO_API_KEY=your_trello_api_key
-TRELLO_TOKEN=your_trello_token
-TRELLO_BOARD_ID=your_board_id
+# Application Mobile Livreur
+DELIVERER_APP_API_KEY=deliverer_app_key
+GPS_TRACKING_ENABLED=true
+PUSH_NOTIFICATIONS_ENABLED=true
 
 # Serveur
 PORT=3000
@@ -801,16 +883,25 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 2. **`en_cours`** - Tournée démarrée, livraisons en cours
 3. **`terminee`** - Tournée terminée
 
-### Webhooks Trello
-- URL à configurer : `https://your-domain.com/api/webhook/trello`
-- Gère automatiquement les déplacements de cartes entre listes
-- Met à jour le `livreur_id` des commandes selon la liste Trello
+### Statuts des livraisons
+1. **`en_attente`** - Commande créée, en attente d'assignation
+2. **`assignee`** - Assignée à un livreur
+3. **`en_cours`** - Livraison en route
+4. **`livree`** - Livraison terminée
+5. **`annulee`** - Commande annulée
 
-### Extension Chrome
-- Envoie les commandes à `/api/send-to-trello`
-- Utilise `sessionId` pour lier extraction et envoi
-- Fonctionne indépendamment du frontend
-- **Ne nécessite aucune modification pour Next.js**
+### GPS Tracking
+- Position mise à jour en temps réel via `/api/deliverer/gps-update`
+- Tracking visible par le dispatcher et l'admin
+- Historique des positions conservé pour analyse
+
+### Application Mobile Livreur
+- Interface React Native dédiée
+- Authentification JWT sécurisée
+- Notifications push pour nouvelles livraisons
+- Navigation GPS intégrée
+- Gestion des stocks en temps réel
+- **Développement séparé du frontend web**
 
 ---
 
@@ -855,13 +946,14 @@ const livreurs = await prisma.livreur.findMany({
 ## ✅ Ce qui fonctionne actuellement
 
 - ✅ **Extraction GPT-4 Vision** - Commandes UberEats
-- ✅ **Envoi automatique à Trello** - Création de cartes
-- ✅ **Webhooks Trello** - Mise à jour automatique
 - ✅ **Gestion complète des tournées** - CRUD complet
 - ✅ **Gestion des stocks** - Initialisation et suivi
 - ✅ **Historique des commandes** - Avec pagination
 - ✅ **Extension Chrome** - Fonctionnelle et indépendante
 - ✅ **Base de données** - Propre et refactorisée
+- ✅ **Authentification JWT** - Système complet
+- ✅ **Dashboard Admin** - Connecté à l'API
+- ✅ **API Mobile Livreur** - Endpoints prêts
 
 ---
 
@@ -885,14 +977,22 @@ const livreurs = await prisma.livreur.findMany({
 4. Page Commandes
 5. Intégration avec React Query
 
-### Phase 4 : Tests et déploiement (1-2 jours)
+### Phase 4 : Application Mobile Livreur (5-7 jours)
+1. Setup React Native
+2. Authentification JWT
+3. Interface de livraison du jour
+4. GPS tracking en temps réel
+5. Notifications push
+6. Gestion des stocks
+
+### Phase 5 : Tests et déploiement (1-2 jours)
 1. Tests end-to-end
 2. Vérifier que l'extension Chrome fonctionne toujours
 3. Déployer sur Vercel
-4. Configurer les webhooks Trello sur la nouvelle URL
+4. Tester l'application mobile
 
 ---
 
-**Backend prêt pour migration Next.js ! 🚀**
+**Backend Next.js prêt + App Mobile Livreur prévue ! 🚀**
 
-*Toute la logique métier est documentée ici. Tu peux maintenant recréer l'application en Next.js avec une base solide.*
+*Toute la logique métier est documentée ici. Le système est maintenant optimisé pour une application mobile dédiée.*
