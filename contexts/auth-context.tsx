@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { authService } from '@/lib/auth-service'
 import type { User } from '@/types/auth'
-
+import { logger } from '@/lib/logger';
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<boolean>
@@ -37,7 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return false
     } catch (error) {
-      console.error('Login error:', error)
+      logger.error({
+        message: 'Login error',
+        error
+      })
       return false
     }
   }

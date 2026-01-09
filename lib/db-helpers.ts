@@ -1,5 +1,5 @@
 import { Pool, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
-
+import { logger } from './logger';
 /**
  * Helpers génériques pour les opérations de base de données
  * Évite la duplication de code dans db.js
@@ -32,7 +32,11 @@ export async function getById<T = any>(
     const [rows] = await pool.query<RowDataPacket[]>(query, params);
     return rows.length > 0 ? (rows[0] as T) : null;
   } catch (error) {
-    console.error(`Error fetching ${table} by id:`, error);
+    logger.error({
+      message: 'Error fetching ${table} by id',
+      table,
+      error
+    });
     throw error;
   }
 }
@@ -86,7 +90,11 @@ export async function getAll<T = any>(
     const [rows] = await pool.query<RowDataPacket[]>(query, params);
     return rows as T[];
   } catch (error) {
-    console.error(`Error fetching all from ${table}:`, error);
+    logger.error({
+      message: 'Error fetching all from ${table}',
+      table,
+      error
+    });
     throw error;
   }
 }
@@ -127,7 +135,11 @@ export async function updateById(
     const [result] = await pool.query<ResultSetHeader>(query, params);
     return result.affectedRows;
   } catch (error) {
-    console.error(`Error updating ${table}:`, error);
+    logger.error({
+      message: 'Error updating ${table}',
+      table,
+      error
+    });
     throw error;
   }
 }
@@ -159,7 +171,11 @@ export async function deleteById(
     const [result] = await pool.query<ResultSetHeader>(query, params);
     return result.affectedRows;
   } catch (error) {
-    console.error(`Error deleting from ${table}:`, error);
+    logger.error({
+      message: 'Error deleting from ${table}',
+      table,
+      error
+    });
     throw error;
   }
 }
@@ -192,7 +208,11 @@ export async function count(
     const [rows] = await pool.query<RowDataPacket[]>(query, params);
     return rows[0].total;
   } catch (error) {
-    console.error(`Error counting ${table}:`, error);
+    logger.error({
+      message: 'Error counting ${table}',
+      table,
+      error
+    });
     throw error;
   }
 }
@@ -232,10 +252,14 @@ export async function insert(
 
     const query = `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${placeholders})`;
     const [result] = await pool.query<ResultSetHeader>(query, values);
-    
+
     return result.insertId;
   } catch (error) {
-    console.error(`Error inserting into ${table}:`, error);
+    logger.error({
+      message: 'Error inserting into ${table}',
+      table,
+      error
+    });
     throw error;
   }
 }

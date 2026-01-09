@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-
+import { logger, logError as loggerError, logRequest as loggerRequest } from './logger';
 /**
  * Service de gestion des erreurs centralisé
  * 
@@ -204,18 +204,11 @@ export function logError(error: any, context: string, metadata: any = {}) {
     message: error.message,
     name: error.name,
     statusCode: error.statusCode,
-    metadata
+    metadata,
+    stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
   };
 
-  // En production, on pourrait envoyer à un service de logging
-  if (process.env.NODE_ENV === 'production') {
-    console.error(JSON.stringify(logData));
-  } else {
-    console.error(`[${context}] ${error.name}: ${error.message}`);
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.error('Metadata:', metadata);
-    }
-  }
+  loggerError(logData);
 }
 
 /**
@@ -225,7 +218,12 @@ export function logError(error: any, context: string, metadata: any = {}) {
  * @param {number} duration - Durée en ms
  * @param {number} statusCode - Statut de la réponse
  */
-export function logApiRequest(request: any, user: any = null, duration: number = 0, statusCode: number = 200) {
+export function logApiRequest(
+  request: any,
+  user: any = null,
+  duration: number = 0,
+  statusCode: number = 200
+) {
   const logData = {
     timestamp: new Date().toISOString(),
     level: 'INFO',
@@ -235,21 +233,16 @@ export function logApiRequest(request: any, user: any = null, duration: number =
     ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
     duration,
     statusCode,
-    user: user ? {
-      id: user.id,
-      role: user.role,
-      email: user.email
-    } : null
+    user: user
+      ? {
+          id: user.id,
+          role: user.role,
+          email: user.email
+        }
+      : null
   };
 
-  if (process.env.NODE_ENV === 'production') {
-    console.info(JSON.stringify(logData));
-  } else {
-    console.log(`[${request.method}] ${request.url} - ${statusCode} (${duration}ms)`);
-    if (user) {
-      console.log(`User: ${user.email} (${user.role})`);
-    }
-  }
+  loggerRequest(logData);
 }
 
 // ==========================================
