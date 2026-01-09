@@ -770,7 +770,6 @@ export async function getRevenueStats(period = 'month', startDate: string | null
     const { period: validatedPeriod, start_date: validatedStart, end_date: validatedEnd } = 
       validateStatsParams({ period, start_date: startDate || undefined, end_date: endDate || undefined });
     
-    let dateFilter = '';
     let dateFormat = '';
     
     switch (validatedPeriod) {
@@ -790,24 +789,29 @@ export async function getRevenueStats(period = 'month', startDate: string | null
         dateFormat = '%Y-%m';
     }
     
+    // Construction sécurisée de la requête avec paramètres
+    let whereClause = 'WHERE o.status IN (?, ?)';
+    const params: any[] = ['delivered', 'completed'];
+    
     if (validatedStart && validatedEnd) {
-      dateFilter = `AND DATE(o.created_at) BETWEEN '${validatedStart.split(' ')[0]}' AND '${validatedEnd.split(' ')[0]}'`;
+      whereClause += ' AND DATE(o.created_at) BETWEEN ? AND ?';
+      params.push(validatedStart.split(' ')[0], validatedEnd.split(' ')[0]);
     }
     
     const [revenueData] = await pool.query(`
       SELECT 
-        DATE_FORMAT(o.created_at, '${dateFormat}') as period,
+        DATE_FORMAT(o.created_at, ?) as period,
         COUNT(DISTINCT o.id) as orders_count,
         SUM(o.total_price) as total_revenue,
         AVG(o.total_price) as avg_order_value,
         SUM(oi.quantity) as items_sold
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
-      WHERE o.status IN ('delivered', 'completed') ${dateFilter}
-      GROUP BY DATE_FORMAT(o.created_at, '${dateFormat}')
+      ${whereClause}
+      GROUP BY DATE_FORMAT(o.created_at, ?)
       ORDER BY period DESC
       LIMIT 12
-    `) as any[];
+    `, [dateFormat, ...params, dateFormat]) as any[];
     
     const [globalStats] = await pool.query(`
       SELECT 
@@ -818,8 +822,8 @@ export async function getRevenueStats(period = 'month', startDate: string | null
         SUM(oi.quantity) as total_items_sold
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
-      WHERE o.status IN ('delivered', 'completed') ${dateFilter}
-    `) as any[];
+      ${whereClause}
+    `, params) as any[];
     
     return {
       periods: revenueData,
@@ -833,19 +837,22 @@ export async function getRevenueStats(period = 'month', startDate: string | null
 
 export async function getTopProducts(limit = 10, period = 'month') {
   try {
-    let dateFilter = '';
+    // Construction sécurisée de la clause WHERE
+    let whereClause = 'WHERE o.status IN (?, ?)';
+    const params: any[] = ['delivered', 'completed'];
+    
     switch (period) {
       case 'day':
-        dateFilter = `AND DATE(o.created_at) = CURDATE()`;
+        whereClause += ' AND DATE(o.created_at) = CURDATE()';
         break;
       case 'week':
-        dateFilter = `AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`;
+        whereClause += ' AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
         break;
       case 'month':
-        dateFilter = `AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+        whereClause += ' AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
         break;
       case 'year':
-        dateFilter = `AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)`;
+        whereClause += ' AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)';
         break;
     }
     
@@ -862,11 +869,11 @@ export async function getTopProducts(limit = 10, period = 'month') {
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
       LEFT JOIN orders o ON oi.order_id = o.id
-      WHERE o.status IN ('delivered', 'completed') ${dateFilter}
+      ${whereClause}
       GROUP BY p.id, p.name, p.category, p.price
       ORDER BY total_sold DESC
       LIMIT ?
-    `, [limit]) as any[];
+    `, [...params, limit]) as any[];
     
     const [categoryStats] = await pool.query(`
       SELECT 
@@ -877,10 +884,10 @@ export async function getTopProducts(limit = 10, period = 'month') {
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
       LEFT JOIN orders o ON oi.order_id = o.id
-      WHERE o.status IN ('delivered', 'completed') ${dateFilter}
+      ${whereClause}
       GROUP BY p.category
       ORDER BY total_revenue DESC
-    `) as any[];
+    `, params) as any[];
     
     return {
       top_products: topProducts,
@@ -894,19 +901,21 @@ export async function getTopProducts(limit = 10, period = 'month') {
 
 export async function getDelivererPerformanceStats(period = 'month') {
   try {
-    let dateFilter = '';
+    // Construction sécurisée de la clause WHERE
+    let whereClause = 'WHERE 1=1';
+    
     switch (period) {
       case 'day':
-        dateFilter = `AND DATE(d.delivery_date) = CURDATE()`;
+        whereClause += ' AND DATE(d.delivery_date) = CURDATE()';
         break;
       case 'week':
-        dateFilter = `AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`;
+        whereClause += ' AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
         break;
       case 'month':
-        dateFilter = `AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+        whereClause += ' AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
         break;
       case 'year':
-        dateFilter = `AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)`;
+        whereClause += ' AND d.delivery_date >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)';
         break;
     }
     
@@ -935,7 +944,7 @@ export async function getDelivererPerformanceStats(period = 'month') {
       LEFT JOIN orders o ON d.id = o.delivery_id AND o.status IN ('delivered', 'completed')
       LEFT JOIN delivery_stocks ds ON d.id = ds.delivery_id
       LEFT JOIN products p ON ds.product_id = p.id
-      WHERE 1=1 ${dateFilter}
+      ${whereClause}
       GROUP BY del.id, u.first_name, u.last_name, del.vehicle_type
       ORDER BY total_revenue DESC
     `) as any[];
@@ -953,7 +962,7 @@ export async function getDelivererPerformanceStats(period = 'month') {
       LEFT JOIN deliveries d ON del.id = d.deliverer_id
       LEFT JOIN orders o ON d.id = o.delivery_id AND o.status IN ('delivered', 'completed')
       LEFT JOIN delivery_stocks ds ON d.id = ds.delivery_id
-      WHERE 1=1 ${dateFilter}
+      ${whereClause}
     `) as any[];
     
     return {
@@ -1046,14 +1055,15 @@ export async function getDashboardStats() {
 
 export async function getStockStats(deliveryId: number | null = null) {
   try {
-    let deliveryFilter = '';
+    // Construction sécurisée de la clause WHERE
+    let whereClause = 'WHERE 1=1';
     let deliveryParams: any[] = [];
     
     if (deliveryId) {
-      deliveryFilter = 'AND ds.delivery_id = ?';
+      whereClause += ' AND ds.delivery_id = ?';
       deliveryParams = [deliveryId];
     } else {
-      deliveryFilter = 'AND DATE(d.delivery_date) = CURDATE()';
+      whereClause += ' AND DATE(d.delivery_date) = CURDATE()';
     }
     
     const [globalStats] = await pool.query(`
@@ -1069,7 +1079,7 @@ export async function getStockStats(deliveryId: number | null = null) {
       FROM delivery_stocks ds
       INNER JOIN deliveries d ON ds.delivery_id = d.id
       INNER JOIN products p ON ds.product_id = p.id
-      WHERE 1=1 ${deliveryFilter}
+      ${whereClause}
     `, deliveryParams) as any[];
     
     const [productDetails] = await pool.query(`
@@ -1088,7 +1098,7 @@ export async function getStockStats(deliveryId: number | null = null) {
       FROM delivery_stocks ds
       INNER JOIN deliveries d ON ds.delivery_id = d.id
       INNER JOIN products p ON ds.product_id = p.id
-      WHERE 1=1 ${deliveryFilter}
+      ${whereClause}
       GROUP BY p.id, p.name, p.category, p.price, p.emoji
       ORDER BY revenue DESC
     `, deliveryParams) as any[];
@@ -1110,7 +1120,7 @@ export async function getStockStats(deliveryId: number | null = null) {
       INNER JOIN deliverers del ON d.deliverer_id = del.id
       INNER JOIN users u ON del.user_id = u.id
       INNER JOIN products p ON ds.product_id = p.id
-      WHERE 1=1 ${deliveryFilter}
+      ${whereClause}
         AND (ds.current_quantity / NULLIF(ds.initial_quantity, 0)) < 0.1
       ORDER BY remaining_percentage ASC
     `, deliveryParams) as any[];
@@ -1128,7 +1138,7 @@ export async function getStockStats(deliveryId: number | null = null) {
       FROM delivery_stocks ds
       INNER JOIN deliveries d ON ds.delivery_id = d.id
       INNER JOIN products p ON ds.product_id = p.id
-      WHERE 1=1 ${deliveryFilter}
+      ${whereClause}
       GROUP BY p.id, p.name, p.category, p.emoji, p.price
       ORDER BY total_sold DESC
       LIMIT 10
