@@ -1,998 +1,303 @@
-# 📚 Backend API Documentation - Fresh Dessert
+# 📚 Backend API Documentation - Fresh Dessert App
 
-> Documentation complète du backend Node.js/Express pour migration vers Next.js
+> Documentation complète de l'API Next.js basée sur le code réel de l'application
 
 ---
 
 ## 🎯 Vue d'ensemble
 
-**Stack actuelle :**
-- Node.js + Express
-- MySQL (via mysql2/promise)
-- OpenAI GPT-4 Vision (extraction)
-- Application mobile livreur (React Native)
+**Stack technique :**
+- Next.js 16.1.1 (App Router)
+- API Routes (Node.js)
+- MySQL 8.0+ (via mysql2/promise)
+- JWT Authentication
+- Upstash Redis (Rate Limiting)
 
-**Port :** 3000  
-**Base de données :** `ubereats_extractor`
+**Base de données :** `fresh_dessert_app_db`
 
 ---
 
 ## 📊 Schéma de base de données
 
-### Tables principales
+### Tables principales (8 tables - tout en anglais)
 
-#### 1. `livreurs` - Livreurs/Dispatch
+#### 1. `users` - Tous les utilisateurs
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-user_id INT (FK → users.id)
-vehicle_type VARCHAR(50)
+email VARCHAR(255) UNIQUE NOT NULL
+password_hash VARCHAR(255) NOT NULL
+first_name VARCHAR(100) NOT NULL
+last_name VARCHAR(100) NOT NULL
 phone VARCHAR(20)
-status ENUM('active', 'inactive', 'busy') DEFAULT 'active'
+role ENUM('client', 'deliverer', 'dispatcher', 'admin')
+active BOOLEAN DEFAULT TRUE
+email_verified BOOLEAN DEFAULT FALSE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+```
+
+#### 2. `deliverers` - Informations livreurs
+```sql
+id INT PRIMARY KEY AUTO_INCREMENT
+user_id INT UNIQUE (FK → users.id)
+vehicle_type ENUM('bike', 'scooter', 'car')
+license_plate VARCHAR(20)
+is_available BOOLEAN DEFAULT FALSE
 current_latitude DECIMAL(10, 8)
 current_longitude DECIMAL(11, 8)
-rating DECIMAL(3, 2) DEFAULT 5.0
+rating DECIMAL(3, 2) DEFAULT 5.00
 total_deliveries INT DEFAULT 0
 created_at TIMESTAMP
 updated_at TIMESTAMP
 ```
 
-**Livreurs pré-chargés :** Nassim, AbdelKarim, Dispatch, AbdelRahman, Mounir, Wissem
-
-#### 2. `commandes` - Historique des commandes
+#### 3. `products` - Catalogue produits
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-session_id VARCHAR(100) NOT NULL
-livreur_id INT (FK → livreurs.id)
-client_nom VARCHAR(200)
-client_code VARCHAR(50)
-nouveau_client BOOLEAN
-departement VARCHAR(10)
-adresse_complete TEXT
-complement_adresse TEXT
-instructions TEXT
-type_livraison VARCHAR(100)
-telephone VARCHAR(50)
-code_uber VARCHAR(50)
-type_numero VARCHAR(20)
-temps_livraison VARCHAR(50)
-articles VARCHAR(50)
-couverts VARCHAR(10)
-sous_total VARCHAR(20)
-frais_livraison VARCHAR(20)
-offre_speciale VARCHAR(20)
-total VARCHAR(20)
-data_json JSON
-livraison_status ENUM('en_attente', 'assignee', 'en_cours', 'livree', 'annulee') DEFAULT 'en_attente'
-gps_tracking JSON
-created_at TIMESTAMP
-```
-
-#### 3. `produits` - Catalogue produits
-```sql
-id INT PRIMARY KEY AUTO_INCREMENT
-nom VARCHAR(200) UNIQUE NOT NULL
-categorie ENUM('tiramisu', 'gaufre', 'patisserie', 'boisson', 'confiserie')
+name VARCHAR(200) UNIQUE NOT NULL
+description TEXT
+category ENUM('tiramisu', 'waffle', 'pastry', 'drink', 'candy')
+price DECIMAL(10, 2) NOT NULL
+allergens VARCHAR(255)
+image_url VARCHAR(500)
 emoji VARCHAR(10)
-actif BOOLEAN DEFAULT TRUE
+active BOOLEAN DEFAULT TRUE
 created_at TIMESTAMP
 updated_at TIMESTAMP
 ```
 
-**50 produits pré-chargés :**
-- 12 Tiramisus (Kinder Bueno, Nutella, Oreo, etc.)
-- 3 Gaufres
-- 10 Pâtisseries (Cookies, Donuts, Macarons, etc.)
-- 12 Boissons (Chill, Oasis, Coca, etc.)
-- 7 Confiseries (Kinder, M&M's, Twix, etc.)
+**Catégories :** `tiramisu`, `waffle`, `pastry`, `drink`, `candy`
 
-#### 4. `tournees` - Tournées de livraison
+#### 4. `addresses` - Adresses de livraison
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-date_tournee DATE NOT NULL
-statut ENUM('en_preparation', 'en_cours', 'terminee')
+user_id INT (FK → users.id)
+label VARCHAR(100)
+street_address VARCHAR(255) NOT NULL
+city VARCHAR(100) NOT NULL
+postal_code VARCHAR(20) NOT NULL
+floor VARCHAR(50)
+door_number VARCHAR(50)
+building_code VARCHAR(50)
+intercom VARCHAR(50)
+delivery_instructions TEXT
+is_default BOOLEAN DEFAULT FALSE
 created_at TIMESTAMP
 updated_at TIMESTAMP
 ```
 
-#### 5. `tournee_livreurs` - Association tournée-livreur
+#### 5. `deliveries` - Tournées de livraison
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-tournee_id INT (FK → tournees.id)
-livreur_id INT (FK → livreurs.id)
-secteur VARCHAR(100)
-created_at TIMESTAMP
-UNIQUE (tournee_id, livreur_id)
-```
-
-#### 6. `tournee_stocks` - Stocks par livreur/tournée
-```sql
-id INT PRIMARY KEY AUTO_INCREMENT
-tournee_livreur_id INT (FK → tournee_livreurs.id)
-produit_id INT (FK → produits.id)
-quantite_initiale INT
-quantite_actuelle INT
+deliverer_id INT (FK → deliverers.id)
+delivery_date DATE NOT NULL
+status ENUM('pending', 'in_progress', 'completed', 'cancelled')
+notes TEXT
 created_at TIMESTAMP
 updated_at TIMESTAMP
-UNIQUE (tournee_livreur_id, produit_id)
 ```
 
-#### 7. `stock_mouvements` - Historique des mouvements
+#### 6. `orders` - Commandes clients
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-tournee_stock_id INT (FK → tournee_stocks.id)
-commande_id INT (FK → commandes.id)
-type_mouvement ENUM('initialisation', 'livraison', 'ajustement')
-quantite INT
-quantite_avant INT
-quantite_apres INT
-commentaire TEXT
+user_id INT (FK → users.id)
+deliverer_id INT (FK → deliverers.id)
+delivery_id INT (FK → deliveries.id)
+total_price DECIMAL(10, 2) NOT NULL
+delivery_address TEXT NOT NULL
+delivery_date DATE
+notes TEXT
+status ENUM('pending', 'confirmed', 'in_delivery', 'delivered', 'completed', 'cancelled')
+created_at TIMESTAMP
+updated_at TIMESTAMP
+```
+
+#### 7. `order_items` - Articles des commandes
+```sql
+id INT PRIMARY KEY AUTO_INCREMENT
+order_id INT (FK → orders.id)
+product_id INT (FK → products.id)
+quantity INT NOT NULL DEFAULT 1
+unit_price DECIMAL(10, 2) NOT NULL
+subtotal DECIMAL(10, 2) NOT NULL
 created_at TIMESTAMP
 ```
 
-#### 8. `commande_produits` - Produits dans les commandes
+#### 8. `delivery_stocks` - Stocks par tournée
 ```sql
 id INT PRIMARY KEY AUTO_INCREMENT
-commande_id INT (FK → commandes.id)
-produit_id INT (FK → produits.id)
-quantite INT DEFAULT 1
+delivery_id INT (FK → deliveries.id)
+product_id INT (FK → products.id)
+initial_quantity INT NOT NULL
+current_quantity INT NOT NULL
+sold_quantity INT DEFAULT 0
 created_at TIMESTAMP
+updated_at TIMESTAMP
+UNIQUE (delivery_id, product_id)
 ```
 
 ---
 
-## 🔌 Endpoints API
+## 🔌 API Endpoints (26 routes)
 
-### 🖼️ Extraction (GPT-4 Vision)
+### 🔐 Authentication
 
-#### `POST /api/extract`
-Extraction complète d'une commande UberEats
+- `POST /api/auth/register` - Créer un compte
+- `POST /api/auth/login` - Se connecter
+- `POST /api/auth/change-password` - Changer le mot de passe
 
-**Request :**
-```json
-{
-  "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
-}
-```
+### 👥 Deliverers
 
-**Response :**
-```json
-{
-  "client": {
-    "nom": "John Doe",
-    "code": "JD123",
-    "nouveauClient": false
-  },
-  "livraison": {
-    "departement": "75",
-    "adresseComplete": "123 Rue de Paris, 75001 Paris",
-    "complementAdresse": "Bâtiment A, 2ème étage",
-    "instructions": "Sonner à l'interphone",
-    "typeLivraison": "Livraison standard",
-    "telephone": "0612345678",
-    "codeUber": "ABC123",
-    "typeNumero": "mobile",
-    "tempsLivraison": "30-40 min"
-  },
-  "commande": {
-    "articles": "3 articles",
-    "couverts": "2"
-  },
-  "montants": {
-    "sousTotal": "25.50€",
-    "fraisLivraison": "2.50€",
-    "offreSpeciale": "-3.00€",
-    "total": "25.00€"
-  },
-  "meta": {
-    "confidence": 0.95,
-    "duration": 1234,
-    "timestamp": "2024-01-04T00:00:00.000Z"
-  }
-}
-```
+- `GET /api/deliverers` - Liste des livreurs
+- `GET /api/deliverers/:id` - Détails d'un livreur
+- `POST /api/deliverers` - Créer un livreur
+- `PUT /api/deliverers/:id` - Modifier un livreur
+- `DELETE /api/deliverers/:id` - Désactiver un livreur
 
-#### `POST /api/extract-commande`
-Extraction étape 1 : Informations commande
+### 🍰 Products
 
-#### `POST /api/extract-adresse`
-Extraction étape 2 : Adresse de livraison
+- `GET /api/products` - Liste des produits
+- `GET /api/products/:id` - Détails d'un produit
+- `POST /api/products` - Créer un produit
+- `PUT /api/products/:id` - Modifier un produit
+- `DELETE /api/products/:id` - Supprimer un produit
 
----
+### 📦 Orders
 
-### 👥 Livreurs
+- `GET /api/orders` - Liste des commandes
+- `GET /api/orders/:id` - Détails d'une commande
+- `POST /api/orders` - Créer une commande
+- `PUT /api/orders/:id` - Modifier une commande
+- `DELETE /api/orders/:id` - Supprimer une commande
 
-#### `GET /api/livreurs`
-Récupérer tous les livreurs actifs
+### 🚚 Deliveries
 
-**Response :**
-```json
-{
-  "success": true,
-  "livreurs": [
-    {
-      "id": 1,
-      "user_id": 5,
-      "email": "nassim@freshdessert.app",
-      "first_name": "Nassim",
-      "last_name": "Livreur",
-      "vehicle_type": "scooter",
-      "phone": "0612345678",
-      "status": "active",
-      "current_latitude": 48.8566,
-      "current_longitude": 2.3522,
-      "rating": 4.8,
-      "total_deliveries": 156,
-      "created_at": "2024-01-01T00:00:00.000Z"
-    }
-  ]
-}
-```
+- `GET /api/deliveries` - Liste des tournées
+- `GET /api/deliveries/:id` - Détails d'une tournée
+- `POST /api/deliveries` - Créer une tournée
+- `PUT /api/deliveries/:id` - Modifier une tournée
+- `DELETE /api/deliveries/:id` - Supprimer une tournée
 
-#### `GET /api/livreurs/:id`
-Récupérer un livreur par ID
+### 📍 Addresses
 
-#### `POST /api/livreurs`
-Créer un nouveau livreur
-
-**Request :**
-```json
-{
-  "user_id": 5,
-  "vehicle_type": "scooter",
-  "phone": "0612345678"
-}
-```
-
-#### `PUT /api/livreurs/:id`
-Mettre à jour un livreur
-
-#### `DELETE /api/livreurs/:id`
-Désactiver un livreur (soft delete)
-
----
-
-### 📱 Application Mobile Livreur
-
-#### `GET /api/deliverer/my-deliveries`
-Récupérer les livraisons du jour pour le livreur connecté
-
-**Headers :** `Authorization: Bearer <token>`
-
-**Response :**
-```json
-{
-  "success": true,
-  "deliveries": [
-    {
-      "id": 1,
-      "client_nom": "John Doe",
-      "adresse_complete": "123 Rue de Paris",
-      "telephone": "0612345678",
-      "total": "25.00€",
-      "livraison_status": "assignee",
-      "gps_tracking": {
-        "latitude": 48.8566,
-        "longitude": 2.3522
-      },
-      "created_at": "2024-01-04T10:30:00.000Z"
-    }
-  ]
-}
-```
-
-#### `PUT /api/deliverer/delivery-status`
-Mettre à jour le statut d'une livraison
-
-**Headers :** `Authorization: Bearer <token>`
-
-**Request :**
-```json
-{
-  "delivery_id": 1,
-  "status": "en_cours",
-  "gps_tracking": {
-    "latitude": 48.8566,
-    "longitude": 2.3522
-  }
-}
-```
-
-#### `GET /api/deliverer/my-stocks`
-Récupérer les stocks actuels du livreur
-
-**Headers :** `Authorization: Bearer <token>`
-
-**Response :**
-```json
-{
-  "success": true,
-  "stocks": [
-    {
-      "product_id": 1,
-      "product_name": "Tiramisu Kinder Bueno",
-      "quantity_assigned": 10,
-      "quantity_delivered": 3,
-      "quantity_remaining": 7
-    }
-  ]
-}
-```
-
-#### `POST /api/deliverer/gps-update`
-Mettre à jour la position GPS du livreur
-
-**Headers :** `Authorization: Bearer <token>`
-
-**Request :**
-```json
-{
-  "latitude": 48.8566,
-  "longitude": 2.3522
-}
-```
-
-#### `GET /api/deliverer/profile`
-Récupérer le profil du livreur connecté
-
-**Headers :** `Authorization: Bearer <token>`
-
-**Response :**
-```json
-{
-  "success": true,
-  "deliverer": {
-    "id": 1,
-    "email": "nassim@freshdessert.app",
-    "first_name": "Nassim",
-    "last_name": "Livreur",
-    "vehicle_type": "scooter",
-    "phone": "0612345678",
-    "status": "active",
-    "rating": 4.8,
-    "total_deliveries": 156,
-    "current_latitude": 48.8566,
-    "current_longitude": 2.3522
-  }
-}
-```
-
----
-
-### 🍰 Produits
-
-#### `GET /api/produits`
-Récupérer tous les produits
-
-**Response :**
-```json
-{
-  "success": true,
-  "produits": [
-    {
-      "id": 1,
-      "nom": "Tiramisu Kinder Bueno White",
-      "categorie": "tiramisu",
-      "emoji": "⭐",
-      "actif": true
-    }
-  ]
-}
-```
-
-#### `GET /api/produits/categorie/:categorie`
-Récupérer les produits par catégorie
-
-**Catégories :** `tiramisu`, `gaufre`, `patisserie`, `boisson`, `confiserie`
-
----
-
-### 🚚 Tournées
-
-#### `POST /api/tournees`
-Créer une nouvelle tournée
-
-**Request :**
-```json
-{
-  "dateTournee": "2024-01-04"
-}
-```
-
-**Response :**
-```json
-{
-  "success": true,
-  "tourneeId": 1
-}
-```
-
-#### `GET /api/tournees`
-Récupérer toutes les tournées avec leurs livreurs
-
-**Response :**
-```json
-{
-  "success": true,
-  "tournees": [
-    {
-      "id": 1,
-      "date_tournee": "2024-01-04",
-      "statut": "en_cours",
-      "livreurs": [
-        {
-          "tournee_livreur_id": 1,
-          "livreur_id": 1,
-          "livreur_nom": "Nassim",
-          "secteur": "75, 93"
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### `GET /api/tournees/:id`
-Récupérer une tournée par ID avec détails complets
-
-#### `PUT /api/tournees/:id/statut`
-Mettre à jour le statut d'une tournée
-
-**Request :**
-```json
-{
-  "statut": "en_cours"
-}
-```
-
-**Statuts :** `en_preparation`, `en_cours`, `terminee`
-
-#### `PUT /api/tournees/:id`
-Modifier une tournée
-
-#### `DELETE /api/tournees/:id`
-Supprimer une tournée
-
----
-
-### 👤 Assignation Livreurs
-
-#### `POST /api/tournees/:id/livreurs`
-Assigner un livreur à une tournée
-
-**Request :**
-```json
-{
-  "livreurId": 1,
-  "secteur": "75, 93"
-}
-```
-
-**Response :**
-```json
-{
-  "success": true,
-  "tourneeLivreurId": 1
-}
-```
-
-#### `DELETE /api/tournees/livreurs/:id`
-Retirer un livreur d'une tournée
-
-**Params :** `id` = `tournee_livreur_id`
-
----
+- `GET /api/addresses` - Liste des adresses
+- `GET /api/addresses/:id` - Détails d'une adresse
+- `POST /api/addresses` - Créer une adresse
+- `PUT /api/addresses/:id` - Modifier une adresse
+- `DELETE /api/addresses/:id` - Supprimer une adresse
 
 ### 📦 Stocks
 
-#### `POST /api/tournees/livreurs/:id/stocks`
-Initialiser les stocks pour un livreur
+- `GET /api/stocks/delivery/:id` - Stocks d'une tournée
+- `POST /api/stocks` - Créer des stocks
+- `PUT /api/stocks/:id` - Modifier un stock
+- `DELETE /api/stocks/:id` - Supprimer un stock
 
-**Params :** `id` = `tournee_livreur_id`
+### 📊 Statistics
 
-**Request :**
-```json
-{
-  "stocks": [
-    { "produitId": 1, "quantite": 10 },
-    { "produitId": 2, "quantite": 5 }
-  ]
-}
-```
+- `GET /api/stats/dashboard` - Stats du dashboard
+- `GET /api/stats/revenue` - Stats de revenus
+- `GET /api/stats/products` - Top produits
+- `GET /api/stats/deliverers` - Performance livreurs
+- `GET /api/stats/geography` - Stats géographiques
+- `GET /api/stats/timeline` - Timeline
+- `GET /api/stats/tours` - Stats tournées
+- `GET /api/stats/stocks` - Stats stocks
 
-#### `GET /api/tournees/livreurs/:id/stocks`
-Récupérer les stocks d'un livreur
+### 🏥 Health
 
-**Response :**
-```json
-{
-  "success": true,
-  "stocks": [
-    {
-      "id": 1,
-      "produit_id": 1,
-      "produit_nom": "Tiramisu Kinder Bueno White",
-      "quantite_initiale": 10,
-      "quantite_actuelle": 8
-    }
-  ]
-}
-```
-
-#### `PUT /api/tournees/livreurs/:id/stocks`
-Modifier les stocks d'un livreur
-
-**Request :**
-```json
-{
-  "stocks": [
-    { "produitId": 1, "quantite": 15 }
-  ]
-}
-```
+- `GET /api/health` - État du serveur
 
 ---
 
-### 📋 Commandes
+## 🔐 Authentification & Sécurité
 
-#### `POST /api/commandes`
-Créer une nouvelle commande (depuis extension Chrome)
+### JWT Tokens
+- **Expiration** : 24 heures
+- **Algorithme** : HS256
+- **Secret** : Variable d'environnement `JWT_SECRET`
 
-**Request :**
-```json
-{
-  "nomClient": "John Doe",
-  "adresse": "123 Rue de Paris",
-  "telephone": "0612345678",
-  "departement": "75",
-  "total": "25.00€",
-  "sessionId": "session_123",
-  "tourneeId": 1
-}
+### Headers requis
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-#### `GET /api/commandes`
-Récupérer l'historique des commandes
+### Rate Limiting
+- **Limite** : 100 requêtes / minute par IP
+- **Service** : Upstash Redis
+- **Response** : 429 Too Many Requests
 
-**Query params :**
-- `limit` (default: 50)
-- `offset` (default: 0)
+### Permissions par rôle
 
-**Response :**
-```json
-{
-  "success": true,
-  "commandes": [
-    {
-      "id": 1,
-      "client_nom": "John Doe",
-      "adresse_complete": "123 Rue de Paris",
-      "total": "25.00€",
-      "livreur_nom": "Nassim",
-      "created_at": "2024-01-04T00:00:00.000Z"
-    }
-  ]
-}
-```
-
-#### `GET /api/commandes/:id`
-Récupérer une commande par ID
-
-#### `PUT /api/commandes/:id/livreur`
-Assigner une commande à un livreur
-
-**Request :**
-```json
-{
-  "livreurId": 1
-}
-```
-
-#### `PUT /api/commandes/:id/statut`
-Changer le statut d'une commande
-
-**Request :**
-```json
-{
-  "statut": "livree"
-}
-```
-
-#### `GET /api/tournees/:id/commandes`
-Récupérer les commandes d'une tournée
-
-#### `GET /api/livreurs/:id/commandes`
-Récupérer les commandes d'un livreur
-
-**Query params :**
-- `tourneeId` (optionnel)
+| Endpoint | Admin | Dispatcher | Deliverer | Client |
+|----------|-------|------------|-----------|--------|
+| `/api/deliverers` | ✅ CRUD | ✅ CRUD | ❌ | ❌ |
+| `/api/products` | ✅ CRUD | ✅ CRUD | ✅ R | ✅ R |
+| `/api/orders` | ✅ CRUD | ✅ CRUD | ✅ R | ✅ R (own) |
+| `/api/deliveries` | ✅ CRUD | ✅ CRUD | ✅ R (own) | ❌ |
+| `/api/stocks` | ✅ CRUD | ✅ CRUD | ✅ R | ❌ |
+| `/api/addresses` | ✅ CRUD | ✅ R | ❌ | ✅ CRUD (own) |
+| `/api/stats` | ✅ | ✅ | ❌ | ❌ |
 
 ---
 
-### 📊 Statistiques
-
-#### `GET /api/stock-movements`
-Récupérer l'historique des mouvements de stock
-
-**Query params :**
-- `limit` (default: 50)
-
-#### `GET /api/stats`
-Récupérer les statistiques globales
-
-**Response :**
-```json
-{
-  "success": true,
-  "stats": {
-    "totalCommandes": 150,
-    "commandesAujourdhui": 12,
-    "livreurActifs": 6,
-    "tourneesEnCours": 1
-  }
-}
-```
-
----
-
-### 🏥 Health Check
-
-#### `GET /api/health`
-Vérifier l'état du serveur
-
-**Response :**
-```json
-{
-  "status": "ok",
-  "service": "UberEats Extractor API",
-  "timestamp": "2024-01-04T00:00:00.000Z",
-  "uptime": 12345
-}
-```
-
----
-
-## 🚀 Migration vers Next.js
-
-### Structure recommandée
-
-```
-app/
-├── api/
-│   ├── extract/route.js
-│   ├── extract-commande/route.js
-│   ├── extract-adresse/route.js
-│   ├── livreurs/
-│   │   ├── route.js
-│   │   └── [id]/
-│   │       ├── route.js
-│   │       └── commandes/route.js
-│   ├── tournees/
-│   │   ├── route.js
-│   │   └── [id]/
-│   │       ├── route.js
-│   │       ├── statut/route.js
-│   │       ├── livreurs/route.js
-│   │       └── commandes/route.js
-│   ├── commandes/
-│   │   ├── route.js
-│   │   └── [id]/
-│   │       ├── route.js
-│   │       ├── livreur/route.js
-│   │       └── statut/route.js
-│   ├── produits/
-│   │   ├── route.js
-│   │   └── categorie/[categorie]/route.js
-│   ├── deliverer/
-│   │   ├── my-deliveries/route.js
-│   │   ├── delivery-status/route.js
-│   │   ├── my-stocks/route.js
-│   │   ├── gps-update/route.js
-│   │   └── profile/route.js
-│   ├── stock-movements/route.js
-│   ├── stats/route.js
-│   └── health/route.js
-├── dashboard/page.js
-├── tournees/
-│   ├── page.js
-│   └── [id]/page.js
-├── commandes/page.js
-└── layout.js
-```
-
-### Exemple de conversion
-
-**Avant (Express) :**
-```javascript
-app.get('/api/livreurs', async (req, res) => {
-  try {
-    const livreurs = await db.getLivreurs(true);
-    res.json({ success: true, livreurs });
-  } catch (error) {
-    console.error('[API] Erreur getLivreurs:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-```
-
-**Après (Next.js) :**
-```javascript
-// app/api/livreurs/route.js
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-
-export async function GET() {
-  try {
-    const livreurs = await db.getLivreurs(true);
-    return NextResponse.json({ success: true, livreurs });
-  } catch (error) {
-    console.error('[API] Erreur getLivreurs:', error.message);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
-}
-```
-
-### Exemple avec paramètres dynamiques
-
-**Avant (Express) :**
-```javascript
-app.get('/api/tournees/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const tournee = await db.getTourneeById(parseInt(id));
-    
-    if (!tournee) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Tournée non trouvée' 
-      });
-    }
-    
-    res.json({ success: true, tournee });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-```
-
-**Après (Next.js) :**
-```javascript
-// app/api/tournees/[id]/route.js
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-
-export async function GET(request, { params }) {
-  try {
-    const { id } = params;
-    const tournee = await db.getTourneeById(parseInt(id));
-    
-    if (!tournee) {
-      return NextResponse.json(
-        { success: false, error: 'Tournée non trouvée' },
-        { status: 404 }
-      );
-    }
-    
-    return NextResponse.json({ success: true, tournee });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
-}
-```
-
-### Exemple avec POST
-
-**Avant (Express) :**
-```javascript
-app.post('/api/tournees', async (req, res) => {
-  try {
-    const { dateTournee } = req.body;
-    
-    if (!dateTournee) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Date de tournée requise' 
-      });
-    }
-    
-    const tourneeId = await db.createTournee(dateTournee);
-    res.json({ success: true, tourneeId });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-```
-
-**Après (Next.js) :**
-```javascript
-// app/api/tournees/route.js
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-
-export async function POST(request) {
-  try {
-    const { dateTournee } = await request.json();
-    
-    if (!dateTournee) {
-      return NextResponse.json(
-        { success: false, error: 'Date de tournée requise' },
-        { status: 400 }
-      );
-    }
-    
-    const tourneeId = await db.createTournee(dateTournee);
-    return NextResponse.json({ success: true, tourneeId });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
-}
-```
-
----
-
-## 🔐 Variables d'environnement
+## 🛠️ Variables d'environnement
 
 ```env
-# Base de données
+# Database
 DB_HOST=localhost
-DB_USER=root
+DB_USER=fresh_dessert_app
 DB_PASSWORD=your_password
-DB_NAME=ubereats_extractor
+DB_NAME=fresh_dessert_app_db
 
-# OpenAI
-OPENAI_API_KEY=sk-...
+# Authentication
+JWT_SECRET=your_jwt_secret_min_32_characters
+NEXTAUTH_SECRET=your_nextauth_secret
+NEXTAUTH_URL=http://localhost:3000
 
-# Application Mobile Livreur
-DELIVERER_APP_API_KEY=deliverer_app_key
-GPS_TRACKING_ENABLED=true
-PUSH_NOTIFICATIONS_ENABLED=true
+# Redis (Rate Limiting)
+UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_token
 
-# Serveur
+# Server
 PORT=3000
 NODE_ENV=development
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ```
 
 ---
 
-## 📝 Notes importantes
+## 📝 Format des réponses
 
-### Session ID
-- Généré automatiquement si absent : `manual_${Date.now()}_${Math.random().toString(36).substr(2,9)}`
-- Format recommandé : `session_YYYYMMDD_HHMMSS_random`
+**Succès :**
+```json
+{
+  "success": true,
+  "message": "Operation successful",
+  "data": { ... },
+  "metadata": { ... }
+}
+```
 
-### Statuts des tournées
-1. **`en_preparation`** - Tournée créée, livreurs assignés, stocks définis
-2. **`en_cours`** - Tournée démarrée, livraisons en cours
-3. **`terminee`** - Tournée terminée
+**Erreur :**
+```json
+{
+  "success": false,
+  "error": "Error message",
+  "details": "Detailed error information",
+  "timestamp": "2024-01-08T12:00:00.000Z"
+}
+```
 
-### Statuts des livraisons
-1. **`en_attente`** - Commande créée, en attente d'assignation
-2. **`assignee`** - Assignée à un livreur
-3. **`en_cours`** - Livraison en route
-4. **`livree`** - Livraison terminée
-5. **`annulee`** - Commande annulée
-
-### GPS Tracking
-- Position mise à jour en temps réel via `/api/deliverer/gps-update`
-- Tracking visible par le dispatcher et l'admin
-- Historique des positions conservé pour analyse
-
-### Application Mobile Livreur
-- Interface React Native dédiée
-- Authentification JWT sécurisée
-- Notifications push pour nouvelles livraisons
-- Navigation GPS intégrée
-- Gestion des stocks en temps réel
-- **Développement séparé du frontend web**
+### Codes HTTP
+- `200` - OK
+- `201` - Created
+- `400` - Bad Request
+- `401` - Unauthorized
+- `403` - Forbidden
+- `404` - Not Found
+- `429` - Too Many Requests
+- `500` - Internal Server Error
 
 ---
 
-## 🛠️ Stack Next.js recommandée
-
-```
-Next.js 14 (App Router)
-├── Frontend: React + Tailwind CSS + shadcn/ui
-├── Backend: Next.js API Routes
-├── Database: MySQL + Prisma ORM (optionnel)
-├── Validation: Zod
-├── State Management: React Query (TanStack Query)
-├── Forms: React Hook Form
-└── Deploy: Vercel (gratuit)
-```
-
-### Pourquoi Prisma ?
-
-**Avant (mysql2) :**
-```javascript
-const [rows] = await pool.query(
-  'SELECT * FROM livreurs WHERE actif = ?',
-  [true]
-);
-```
-
-**Après (Prisma) :**
-```javascript
-const livreurs = await prisma.livreur.findMany({
-  where: { actif: true }
-});
-```
-
-**Avantages :**
-- Type-safety avec TypeScript
-- Migrations automatiques
-- Relations automatiques
-- Moins de bugs SQL
-
----
-
-## ✅ Ce qui fonctionne actuellement
-
-- ✅ **Extraction GPT-4 Vision** - Commandes UberEats
-- ✅ **Gestion complète des tournées** - CRUD complet
-- ✅ **Gestion des stocks** - Initialisation et suivi
-- ✅ **Historique des commandes** - Avec pagination
-- ✅ **Extension Chrome** - Fonctionnelle et indépendante
-- ✅ **Base de données** - Propre et refactorisée
-- ✅ **Authentification JWT** - Système complet
-- ✅ **Dashboard Admin** - Connecté à l'API
-- ✅ **API Mobile Livreur** - Endpoints prêts
-
----
-
-## 🎯 Plan de migration recommandé
-
-### Phase 1 : Setup (1 jour)
-1. Créer un nouveau projet Next.js
-2. Configurer Prisma avec le schéma existant
-3. Configurer les variables d'environnement
-4. Tester la connexion à la base de données
-
-### Phase 2 : API Routes (2-3 jours)
-1. Migrer les endpoints un par un
-2. Tester chaque endpoint avec Postman/Thunder Client
-3. Garder le backend Express en parallèle pour comparaison
-
-### Phase 3 : Frontend (3-5 jours)
-1. Créer le layout de base avec shadcn/ui
-2. Page Dashboard
-3. Page Tournées
-4. Page Commandes
-5. Intégration avec React Query
-
-### Phase 4 : Application Mobile Livreur (5-7 jours)
-1. Setup React Native
-2. Authentification JWT
-3. Interface de livraison du jour
-4. GPS tracking en temps réel
-5. Notifications push
-6. Gestion des stocks
-
-### Phase 5 : Tests et déploiement (1-2 jours)
-1. Tests end-to-end
-2. Vérifier que l'extension Chrome fonctionne toujours
-3. Déployer sur Vercel
-4. Tester l'application mobile
-
----
-
-**Backend Next.js prêt + App Mobile Livreur prévue ! 🚀**
-
-*Toute la logique métier est documentée ici. Le système est maintenant optimisé pour une application mobile dédiée.*
+**Documentation basée sur le code réel - Version 2.0 - 2026-01-08** 🚀
