@@ -363,3 +363,35 @@ export interface StatsParams {
   start_date?: string;
   end_date?: string;
 }
+
+// ==========================================
+// MYSQL2 HELPERS - Élimine @ts-expect-error
+// ==========================================
+
+import { FieldPacket } from 'mysql2/promise';
+
+// Type pour les résultats de SELECT
+export type QueryResult<T extends RowDataPacket> = [T[], FieldPacket[]];
+
+// Type pour les résultats de INSERT/UPDATE/DELETE
+export type MutationResult = [ResultSetHeader, FieldPacket[]];
+
+// Helper pour extraire le premier row
+export function getFirstRow<T extends RowDataPacket>(result: QueryResult<T>): T | undefined {
+  return result[0][0];
+}
+
+// Helper pour extraire tous les rows
+export function getAllRows<T extends RowDataPacket>(result: QueryResult<T>): T[] {
+  return result[0];
+}
+
+// Helper pour extraire l'ID inséré
+export function getInsertId(result: MutationResult): number {
+  return result[0].insertId;
+}
+
+// Helper pour extraire le nombre de lignes affectées
+export function getAffectedRows(result: MutationResult): number {
+  return result[0].affectedRows;
+}

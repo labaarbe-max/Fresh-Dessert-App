@@ -294,7 +294,7 @@ function getErrorMessage(error: any): string {
  * @returns {Function} Handler wrapper
  */
 export function withErrorHandling(handler: Function, context: string = 'API') {
-  return async (...args) => {
+  return async (...args: any[]) => {
     try {
       const startTime = Date.now();
       const result = await handler(...args);
