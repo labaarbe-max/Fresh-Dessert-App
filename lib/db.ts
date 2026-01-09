@@ -1,10 +1,11 @@
 import * as mysql from 'mysql2/promise';
-import { StockService } from './stock-service.js';
-import { validateStatsParams } from './validation.js';
-import { logError } from './error-handler.js';
-// Types disponibles dans: ../types/database.types.ts
-
-// Pour la base de données
+import { StockService } from './stock-service';
+import { validateStatsParams } from './validation';
+import { logError } from './error-handler';
+import { 
+  User, Product, Order, Delivery, Deliverer, Address, DeliveryStock, OrderItem,
+  QueryResult, MutationResult, getFirstRow, getAllRows, getInsertId, getAffectedRows
+} from '../types/database.types';
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
@@ -48,15 +49,15 @@ export async function getDeliverers(activeOnly = false) {
     
     query += ' ORDER BY u.first_name';
     
-    const [rows] = await pool.query(query);
-    return rows;
+    const result = await pool.query(query) as QueryResult<Deliverer>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching deliverers:', error);
+    logError(error as Error, 'Database', { operation: 'getDeliverers' });
     throw error;
   }
 }
 
-export async function createDeliverer(delivererData) {
+export async function createDeliverer(delivererData: any) {
   try {
     const {
       user_id,
@@ -65,27 +66,26 @@ export async function createDeliverer(delivererData) {
       status = 'active'
     } = delivererData;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO deliverers 
       (user_id, vehicle_type, phone, status) 
       VALUES (?, ?, ?, ?)`,
       [user_id, vehicle_type, phone, status]
-    );
+    ) as MutationResult;
 
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { id: result.insertId, ...delivererData };
+    return { id: getInsertId(result), ...delivererData };
   } catch (error) {
-    console.error('Error creating deliverer:', error);
+    logError(error as Error, 'Database', { operation: 'createDeliverer' });
     throw error;
   }
 }
 
 // Pour les produits
 
-export async function getProducts(activeOnly = false, category = null) {
+export async function getProducts(activeOnly = false, category: string | null = null) {
   try {
     let query = 'SELECT * FROM products WHERE 1=1';
-    const params = [];
+    const params: any[] = [];
     
     if (activeOnly) {
       query += ' AND active = ?';
@@ -99,40 +99,39 @@ export async function getProducts(activeOnly = false, category = null) {
     
     query += ' ORDER BY name';
     
-    const [rows] = await pool.query(query, params);
-    return rows;
+    const result = await pool.query(query, params) as QueryResult<Product>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching products:', error);
+    logError(error as Error, 'Database', { operation: 'getProducts' });
     throw error;
   }
 }
 
-export async function getProductById(id) {
+export async function getProductById(id: number) {
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
-    return rows[0];
+    const result = await pool.query('SELECT * FROM products WHERE id = ?', [id]) as QueryResult<Product>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching product:', error);
+    logError(error as Error, 'Database', { operation: 'getProductById', productId: id });
     throw error;
   }
 }
 
-export async function createProduct(data) {
+export async function createProduct(data: any) {
   try {
     const { name, description, category, price, allergens, image_url, emoji, active } = data;
-    const [result] = await pool.query(
+    const result = await pool.query(
       'INSERT INTO products (name, description, category, price, allergens, image_url, emoji, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [name, description, category, price, allergens, image_url, emoji, active ?? true]
-    );
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { id: result.insertId, ...data };
+    ) as MutationResult;
+    return { id: getInsertId(result), ...data };
   } catch (error) {
-    console.error('Error creating product:', error);
+    logError(error as Error, 'Database', { operation: 'createProduct' });
     throw error;
   }
 }
 
-export async function updateProduct(id, data) {
+export async function updateProduct(id: number, data: any) {
   try {
     const { name, description, category, price, allergens, image_url, emoji, active } = data;
     await pool.query(
@@ -141,51 +140,50 @@ export async function updateProduct(id, data) {
     );
     return { id, ...data };
   } catch (error) {
-    console.error('Error updating product:', error);
+    logError(error as Error, 'Database', { operation: 'updateProduct', productId: id });
     throw error;
   }
 }
 
-export async function deleteProduct(id) {
+export async function deleteProduct(id: number) {
   try {
     await pool.query('DELETE FROM products WHERE id = ?', [id]);
     return { id };
   } catch (error) {
-    console.error('Error deleting product:', error);
+    logError(error as Error, 'Database', { operation: 'deleteProduct', productId: id });
     throw error;
   }
 }
 
 // Pour les users
 
-export async function createUser(userData) {
+export async function createUser(userData: any) {
   try {
     const { email, password_hash, first_name, last_name, phone, role } = userData;
-    const [result] = await pool.query(
+    const result = await pool.query(
       'INSERT INTO users (email, password_hash, first_name, last_name, phone, role, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [email, password_hash, first_name, last_name, phone, role, false]
-    );
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { id: result.insertId, email, first_name, last_name, role };
+    ) as MutationResult;
+    return { id: getInsertId(result), email, first_name, last_name, role };
   } catch (error) {
-    console.error('Error creating user:', error);
+    logError(error as Error, 'Database', { operation: 'createUser' });
     throw error;
   }
 }
 
-export async function getUserByEmail(email) {
+export async function getUserByEmail(email: string) {
   try {
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    return users[0];
+    const result = await pool.query('SELECT * FROM users WHERE email = ?', [email]) as QueryResult<User>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching user by email:', error);
+    logError(error as Error, 'Database', { operation: 'getUserByEmail', email });
     throw error;
   }
 }
 
 // Pour les commandes (orders)
 
-export async function getOrders(userId = null, role = null) {
+export async function getOrders(userId: number | null = null, role: string | null = null) {
   try {
     let query = `
       SELECT 
@@ -195,173 +193,154 @@ export async function getOrders(userId = null, role = null) {
       FROM orders o
       LEFT JOIN users u ON o.user_id = u.id
       LEFT JOIN deliverers d ON o.deliverer_id = d.id
+      WHERE 1=1
     `;
-    const params = [];
     
-    // Si client, voir uniquement ses commandes
-    if (role === 'client' && userId) {
-      query += ' WHERE o.user_id = ?';
-      params.push(userId);
-    }
+    const params: any[] = [];
     
-    query += ' ORDER BY o.created_at DESC';
-    
-    const [rows] = await pool.query(query, params);
-    return rows;
-  } catch (error) {
-    console.error('Error fetching orders:', error);
-    throw error;
-  }
-}
-
-export async function getOrderById(orderId, userId = null, role = null) {
-  try {
-    let query = `
-      SELECT 
-        o.*,
-        u.first_name, u.last_name, u.email,
-        d.name as deliverer_name
-      FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN deliverers d ON o.deliverer_id = d.id
-      WHERE o.id = ?
-    `;
-    const params = [orderId];
-    
-    // Si client, vérifier que c'est sa commande
     if (role === 'client' && userId) {
       query += ' AND o.user_id = ?';
       params.push(userId);
     }
     
-    const [rows] = await pool.query(query, params);
+    query += ' ORDER BY o.created_at DESC';
     
-    // @ts-expect-error - MySQL2 QueryResult type
-    if (rows.length === 0) {
-      return null;
-    }
-    
-    // Récupérer les items de la commande
-    const [items] = await pool.query(`
-      SELECT 
-        oi.*,
-        p.name as product_name,
-        p.emoji
-      FROM order_items oi
-      LEFT JOIN products p ON oi.product_id = p.id
-      WHERE oi.order_id = ?
-    `, [orderId]);
-    
-    return {
-      ...rows[0],
-      items
-    };
+    const result = await pool.query(query, params) as QueryResult<Order>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching order:', error);
+    logError(error as Error, 'Database', { operation: 'getOrders' });
     throw error;
   }
 }
 
-export async function createOrder(orderData) {
+export async function getOrderById(orderId: number, userId: number | null = null, role: string | null = null) {
+  try {
+    let query = `
+      SELECT 
+        o.*,
+        u.first_name, u.last_name, u.email, u.phone
+      FROM orders o
+      INNER JOIN users u ON o.user_id = u.id
+      WHERE o.id = ?
+    `;
+    
+    const params: any[] = [orderId];
+    
+    if (role === 'client' && userId) {
+      query += ' AND o.user_id = ?';
+      params.push(userId);
+    }
+    
+    const result = await pool.query(query, params) as QueryResult<Order>;
+    const order = getFirstRow(result);
+    
+    if (!order) {
+      return null;
+    }
+    
+    const itemsResult = await pool.query(`
+      SELECT 
+        oi.*,
+        p.name as product_name,
+        p.category,
+        p.emoji
+      FROM order_items oi
+      INNER JOIN products p ON oi.product_id = p.id
+      WHERE oi.order_id = ?
+    `, [orderId]) as QueryResult<OrderItem>;
+    
+    const items = getAllRows(itemsResult);
+    
+    return {
+      ...order,
+      items
+    };
+  } catch (error) {
+    logError(error as Error, 'Database', { operation: 'getOrderById', orderId });
+    throw error;
+  }
+}
+
+export async function createOrder(orderData: any) {
   const connection = await pool.getConnection();
+  
   try {
     await connection.beginTransaction();
     
-    const { user_id, delivery_address, delivery_date, notes, items, delivery_id } = orderData;
+    const { user_id, items, delivery_address, delivery_date, notes, delivery_id } = orderData;
     
-    // Si delivery_id est spécifié, décrémenter les stocks
     if (delivery_id) {
-      // Valider et décrémenter les stocks
-      const stockResult = await StockService.processOrderStocks(delivery_id, items);
-      
-      // Calculer le total basé sur les prix des produits
       let total_price = 0;
       for (const item of items) {
-        const [product] = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]);
-        // @ts-expect-error - MySQL2 QueryResult type
-        if (product.length === 0) {
+        const productResult = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]) as QueryResult<Product>;
+        const product = getFirstRow(productResult);
+        if (!product) {
           throw new Error(`Product ${item.product_id} not found`);
         }
-        total_price += product[0].price * item.quantity;
+        total_price += product.price * item.quantity;
       }
       
-      // Créer la commande avec delivery_id
-      const [orderResult] = await connection.query(
+      const orderResult = await connection.query(
         'INSERT INTO orders (user_id, total_price, delivery_address, delivery_date, notes, delivery_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [user_id, total_price, delivery_address, delivery_date, notes, delivery_id, 'confirmed']
-      );
+      ) as MutationResult;
       
-      // @ts-expect-error - MySQL2 ResultSetHeader type
-      const orderId = orderResult.insertId;
+      const orderId = getInsertId(orderResult);
       
-      // Créer les items
       for (const item of items) {
-        const [product] = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]);
-        const unit_price = product[0].price;
-        const subtotal = unit_price * item.quantity;
-        
+        const productResult = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]) as QueryResult<Product>;
+        const product = getFirstRow(productResult);
         await connection.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
-          [orderId, item.product_id, item.quantity, unit_price, subtotal]
+          'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)',
+          [orderId, item.product_id, item.quantity, product?.price]
         );
+        
+        await StockService.decrementStock(delivery_id, item.product_id, item.quantity);
       }
       
       await connection.commit();
-      
-      return { 
-        id: orderId, 
-        total_price, 
-        ...orderData,
-        stock_decremented: stockResult.items,
-        total_decremented: stockResult.totalDecremented
-      };
-      
+      return { id: orderId, ...orderData };
     } else {
-      // Logique originale sans décrémentation de stocks
       let total_price = 0;
       for (const item of items) {
-        const [product] = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]);
-        // @ts-expect-error - MySQL2 QueryResult type
-        if (product.length === 0) {
+        const productResult = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]) as QueryResult<Product>;
+        const product = getFirstRow(productResult);
+        if (!product) {
           throw new Error(`Product ${item.product_id} not found`);
         }
-        total_price += product[0].price * item.quantity;
+        total_price += product.price * item.quantity;
       }
       
-      const [orderResult] = await connection.query(
+      const orderResult = await connection.query(
         'INSERT INTO orders (user_id, total_price, delivery_address, delivery_date, notes) VALUES (?, ?, ?, ?, ?)',
         [user_id, total_price, delivery_address, delivery_date, notes]
-      );
+      ) as MutationResult;
       
-      // @ts-expect-error - MySQL2 ResultSetHeader type
-      const orderId = orderResult.insertId;
+      const orderId = getInsertId(orderResult);
       
       for (const item of items) {
-        const [product] = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]);
-        const unit_price = product[0].price;
-        const subtotal = unit_price * item.quantity;
-        
+        const productResult = await connection.query('SELECT price FROM products WHERE id = ?', [item.product_id]) as QueryResult<Product>;
+        const product = getFirstRow(productResult);
         await connection.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
-          [orderId, item.product_id, item.quantity, unit_price, subtotal]
+          'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)',
+          [orderId, item.product_id, item.quantity, product?.price]
         );
       }
       
       await connection.commit();
-      
-      return { id: orderId, total_price, ...orderData };
+      return { id: orderId, ...orderData };
     }
     
   } catch (error) {
     await connection.rollback();
-    console.error('Error creating order:', error);
+    logError(error as Error, 'Database', { operation: 'createOrder' });
     throw error;
   } finally {
     connection.release();
   }
 }
 
-export async function updateOrder(orderId, updateData) {
+export async function updateOrder(orderId: number, updateData: any) {
   try {
     const { status, delivery_address, delivery_date, notes, deliverer_id } = updateData;
     
@@ -372,24 +351,24 @@ export async function updateOrder(orderId, updateData) {
     
     return { id: orderId, ...updateData };
   } catch (error) {
-    console.error('Error updating order:', error);
+    logError(error as Error, 'Database', { operation: 'updateOrder', orderId });
     throw error;
   }
 }
 
-export async function deleteOrder(orderId) {
+export async function deleteOrder(orderId: number) {
   try {
     await pool.query('DELETE FROM orders WHERE id = ?', [orderId]);
     return { id: orderId };
   } catch (error) {
-    console.error('Error deleting order:', error);
+    logError(error as Error, 'Database', { operation: 'deleteOrder', orderId });
     throw error;
   }
 }
 
 // Pour les tournées (deliveries)
 
-export async function getDeliveries(delivererId = null, role = null) {
+export async function getDeliveries(delivererId: number | null = null, role: string | null = null) {
   try {
     let query = `
       SELECT 
@@ -401,26 +380,26 @@ export async function getDeliveries(delivererId = null, role = null) {
       LEFT JOIN deliverers del ON d.deliverer_id = del.id
       LEFT JOIN users u ON del.user_id = u.id
       LEFT JOIN orders o ON d.id = o.delivery_id
+      WHERE 1=1
     `;
-    const params = [];
+    const params: any[] = [];
     
-    // Si deliverer, voir uniquement ses tournées
     if (role === 'deliverer' && delivererId) {
-      query += ' WHERE d.deliverer_id = ?';
+      query += ' AND d.deliverer_id = ?';
       params.push(delivererId);
     }
     
     query += ' GROUP BY d.id ORDER BY d.delivery_date DESC, d.created_at DESC';
     
-    const [rows] = await pool.query(query, params);
-    return rows;
+    const result = await pool.query(query, params) as QueryResult<Delivery>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching deliveries:', error);
+    logError(error as Error, 'Database', { operation: 'getDeliveries' });
     throw error;
   }
 }
 
-export async function getDeliveryById(deliveryId, delivererId = null, role = null) {
+export async function getDeliveryById(deliveryId: number, delivererId: number | null = null, role: string | null = null) {
   try {
     let query = `
       SELECT 
@@ -433,23 +412,21 @@ export async function getDeliveryById(deliveryId, delivererId = null, role = nul
       LEFT JOIN users u ON del.user_id = u.id
       WHERE d.id = ?
     `;
-    const params = [deliveryId];
+    const params: any[] = [deliveryId];
     
-    // Si deliverer, vérifier que c'est sa tournée
     if (role === 'deliverer' && delivererId) {
       query += ' AND d.deliverer_id = ?';
       params.push(delivererId);
     }
     
-    const [rows] = await pool.query(query, params);
+    const result = await pool.query(query, params) as QueryResult<Delivery>;
+    const delivery = getFirstRow(result);
     
-    // @ts-expect-error - MySQL2 QueryResult type
-    if (rows.length === 0) {
+    if (!delivery) {
       return null;
     }
     
-    // Récupérer les commandes de la tournée
-    const [orders] = await pool.query(`
+    const ordersResult = await pool.query(`
       SELECT 
         o.*,
         u.first_name, u.last_name, u.email, u.phone
@@ -457,32 +434,31 @@ export async function getDeliveryById(deliveryId, delivererId = null, role = nul
       LEFT JOIN users u ON o.user_id = u.id
       WHERE o.delivery_id = ?
       ORDER BY o.created_at
-    `, [deliveryId]);
+    `, [deliveryId]) as QueryResult<Order>;
+    
+    const orders = getAllRows(ordersResult);
     
     return {
-      ...rows[0],
+      ...delivery,
       orders
     };
   } catch (error) {
-    console.error('Error fetching delivery:', error);
+    logError(error as Error, 'Database', { operation: 'getDeliveryById', deliveryId });
     throw error;
   }
 }
 
-export async function createDelivery(deliveryData) {
+export async function createDelivery(deliveryData: any) {
   try {
     const { deliverer_id, delivery_date, notes, order_ids } = deliveryData;
     
-    // Créer la tournée
-    const [result] = await pool.query(
+    const result = await pool.query(
       'INSERT INTO deliveries (deliverer_id, delivery_date, notes) VALUES (?, ?, ?)',
       [deliverer_id, delivery_date, notes]
-    );
+    ) as MutationResult;
     
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    const deliveryId = result.insertId;
+    const deliveryId = getInsertId(result);
     
-    // Assigner les commandes à la tournée si order_ids fourni
     if (order_ids && order_ids.length > 0) {
       for (const orderId of order_ids) {
         await pool.query(
@@ -494,12 +470,12 @@ export async function createDelivery(deliveryData) {
     
     return { id: deliveryId, ...deliveryData };
   } catch (error) {
-    console.error('Error creating delivery:', error);
+    logError(error as Error, 'Database', { operation: 'createDelivery' });
     throw error;
   }
 }
 
-export async function updateDelivery(deliveryId, updateData) {
+export async function updateDelivery(deliveryId: number, updateData: any) {
   try {
     const { status, delivery_date, notes, deliverer_id } = updateData;
     
@@ -510,56 +486,52 @@ export async function updateDelivery(deliveryId, updateData) {
     
     return { id: deliveryId, ...updateData };
   } catch (error) {
-    console.error('Error updating delivery:', error);
+    logError(error as Error, 'Database', { operation: 'updateDelivery', deliveryId });
     throw error;
   }
 }
 
-export async function deleteDelivery(deliveryId) {
+export async function deleteDelivery(deliveryId: number) {
   try {
-    // Retirer l'assignation des commandes
     await pool.query('UPDATE orders SET delivery_id = NULL WHERE delivery_id = ?', [deliveryId]);
-    
-    // Supprimer la tournée
     await pool.query('DELETE FROM deliveries WHERE id = ?', [deliveryId]);
     
     return { id: deliveryId };
   } catch (error) {
-    console.error('Error deleting delivery:', error);
+    logError(error as Error, 'Database', { operation: 'deleteDelivery', deliveryId });
     throw error;
   }
 }
 
 // Pour les adresses (addresses)
 
-export async function getAddresses(userId) {
+export async function getAddresses(userId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       'SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC',
       [userId]
-    );
-    return rows;
+    ) as QueryResult<Address>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching addresses:', error);
+    logError(error as Error, 'Database', { operation: 'getAddresses', userId });
     throw error;
   }
 }
 
-export async function getAddressById(addressId, userId) {
+export async function getAddressById(addressId: number, userId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       'SELECT * FROM addresses WHERE id = ? AND user_id = ?',
       [addressId, userId]
-    );
-    // @ts-expect-error - MySQL2 QueryResult type
-    return rows.length > 0 ? rows[0] : null;
+    ) as QueryResult<Address>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching address:', error);
+    logError(error as Error, 'Database', { operation: 'getAddressById', addressId, userId });
     throw error;
   }
 }
 
-export async function createAddress(addressData) {
+export async function createAddress(addressData: any) {
   try {
     const {
       user_id,
@@ -575,7 +547,6 @@ export async function createAddress(addressData) {
       is_default
     } = addressData;
 
-    // Si c'est l'adresse par défaut, retirer le flag des autres adresses
     if (is_default) {
       await pool.query(
         'UPDATE addresses SET is_default = FALSE WHERE user_id = ?',
@@ -583,22 +554,21 @@ export async function createAddress(addressData) {
       );
     }
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO addresses 
       (user_id, label, street_address, city, postal_code, floor, door_number, building_code, intercom, delivery_instructions, is_default) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [user_id, label, street_address, city, postal_code, floor, door_number, building_code, intercom, delivery_instructions, is_default || false]
-    );
+    ) as MutationResult;
 
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { id: result.insertId, ...addressData };
+    return { id: getInsertId(result), ...addressData };
   } catch (error) {
-    console.error('Error creating address:', error);
+    logError(error as Error, 'Database', { operation: 'createAddress' });
     throw error;
   }
 }
 
-export async function updateAddress(addressId, userId, updateData) {
+export async function updateAddress(addressId: number, userId: number, updateData: any) {
   try {
     const {
       label,
@@ -613,7 +583,6 @@ export async function updateAddress(addressId, userId, updateData) {
       is_default
     } = updateData;
 
-    // Si c'est l'adresse par défaut, retirer le flag des autres adresses
     if (is_default) {
       await pool.query(
         'UPDATE addresses SET is_default = FALSE WHERE user_id = ?',
@@ -632,12 +601,12 @@ export async function updateAddress(addressId, userId, updateData) {
 
     return { id: addressId, ...updateData };
   } catch (error) {
-    console.error('Error updating address:', error);
+    logError(error as Error, 'Database', { operation: 'updateAddress', addressId, userId });
     throw error;
   }
 }
 
-export async function deleteAddress(addressId, userId) {
+export async function deleteAddress(addressId: number, userId: number) {
   try {
     await pool.query(
       'DELETE FROM addresses WHERE id = ? AND user_id = ?',
@@ -645,16 +614,16 @@ export async function deleteAddress(addressId, userId) {
     );
     return { id: addressId };
   } catch (error) {
-    console.error('Error deleting address:', error);
+    logError(error as Error, 'Database', { operation: 'deleteAddress', addressId, userId });
     throw error;
   }
 }
 
 // Pour les stocks (delivery_stocks)
 
-export async function getDeliveryStocks(deliveryId) {
+export async function getDeliveryStocks(deliveryId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT 
         ds.*,
         p.name as product_name,
@@ -665,17 +634,17 @@ export async function getDeliveryStocks(deliveryId) {
       WHERE ds.delivery_id = ?
       ORDER BY p.name`,
       [deliveryId]
-    );
-    return rows;
+    ) as QueryResult<DeliveryStock>;
+    return getAllRows(result);
   } catch (error) {
-    console.error('Error fetching delivery stocks:', error);
+    logError(error as Error, 'Database', { operation: 'getDeliveryStocks', deliveryId });
     throw error;
   }
 }
 
-export async function getStockById(stockId) {
+export async function getStockById(stockId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT 
         ds.*,
         p.name as product_name,
@@ -684,16 +653,15 @@ export async function getStockById(stockId) {
       LEFT JOIN products p ON ds.product_id = p.id
       WHERE ds.id = ?`,
       [stockId]
-    );
-    // @ts-expect-error - MySQL2 QueryResult type
-    return rows.length > 0 ? rows[0] : null;
+    ) as QueryResult<DeliveryStock>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching stock:', error);
+    logError(error as Error, 'Database', { operation: 'getStockById', stockId });
     throw error;
   }
 }
 
-export async function createDeliveryStock(stockData) {
+export async function createDeliveryStock(stockData: any) {
   try {
     const {
       delivery_id,
@@ -701,22 +669,21 @@ export async function createDeliveryStock(stockData) {
       initial_quantity
     } = stockData;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO delivery_stocks 
       (delivery_id, product_id, initial_quantity, current_quantity) 
       VALUES (?, ?, ?, ?)`,
       [delivery_id, product_id, initial_quantity, initial_quantity]
-    );
+    ) as MutationResult;
 
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { id: result.insertId, ...stockData, current_quantity: initial_quantity, sold_quantity: 0 };
+    return { id: getInsertId(result), ...stockData, current_quantity: initial_quantity, sold_quantity: 0 };
   } catch (error) {
-    console.error('Error creating delivery stock:', error);
+    logError(error as Error, 'Database', { operation: 'createDeliveryStock' });
     throw error;
   }
 }
 
-export async function updateDeliveryStock(stockId, updateData) {
+export async function updateDeliveryStock(stockId: number, updateData: any) {
   try {
     const {
       initial_quantity,
@@ -733,12 +700,12 @@ export async function updateDeliveryStock(stockId, updateData) {
 
     return { id: stockId, ...updateData };
   } catch (error) {
-    console.error('Error updating delivery stock:', error);
+    logError(error as Error, 'Database', { operation: 'updateDeliveryStock', stockId });
     throw error;
   }
 }
 
-export async function decrementStock(deliveryId, productId, quantity) {
+export async function decrementStock(deliveryId: number, productId: number, quantity: number) {
   try {
     await pool.query(
       `UPDATE delivery_stocks 
@@ -748,20 +715,19 @@ export async function decrementStock(deliveryId, productId, quantity) {
       [quantity, quantity, deliveryId, productId, quantity]
     );
 
-    const [rows] = await pool.query(
+    const result = await pool.query(
       'SELECT * FROM delivery_stocks WHERE delivery_id = ? AND product_id = ?',
       [deliveryId, productId]
-    );
+    ) as QueryResult<DeliveryStock>;
 
-    // @ts-expect-error - MySQL2 QueryResult type
-    return rows.length > 0 ? rows[0] : null;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error decrementing stock:', error);
+    logError(error as Error, 'Database', { operation: 'decrementStock', deliveryId, productId });
     throw error;
   }
 }
 
-export async function deleteDeliveryStock(stockId) {
+export async function deleteDeliveryStock(stockId: number) {
   try {
     await pool.query(
       'DELETE FROM delivery_stocks WHERE id = ?',
@@ -769,12 +735,12 @@ export async function deleteDeliveryStock(stockId) {
     );
     return { id: stockId };
   } catch (error) {
-    console.error('Error deleting delivery stock:', error);
+    logError(error as Error, 'Database', { operation: 'deleteDeliveryStock', stockId });
     throw error;
   }
 }
 
-export async function bulkCreateDeliveryStocks(deliveryId, stocksArray) {
+export async function bulkCreateDeliveryStocks(deliveryId: number, stocksArray: any[]) {
   try {
     const values = stocksArray.map(stock => [
       deliveryId,
@@ -783,28 +749,26 @@ export async function bulkCreateDeliveryStocks(deliveryId, stocksArray) {
       stock.initial_quantity
     ]);
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO delivery_stocks 
       (delivery_id, product_id, initial_quantity, current_quantity) 
       VALUES ?`,
       [values]
-    );
+    ) as MutationResult;
 
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    return { insertedCount: result.affectedRows };
+    return { insertedCount: getAffectedRows(result) };
   } catch (error) {
-    console.error('Error bulk creating delivery stocks:', error);
+    logError(error as Error, 'Database', { operation: 'bulkCreateDeliveryStocks', deliveryId });
     throw error;
   }
 }
 
 // FONCTIONS DE STATISTIQUES INTÉGRÉES AVEC STOCKS
 
-export async function getRevenueStats(period = 'month', startDate = null, endDate = null) {
+export async function getRevenueStats(period = 'month', startDate: string | null = null, endDate: string | null = null) {
   try {
-    // @ts-expect-error - StatsParams type mismatch
-    const { period: validatedPeriod, startDate: validatedStart, endDate: validatedEnd } = 
-      validateStatsParams({ period, start_date: startDate, end_date: endDate });
+    const { period: validatedPeriod, start_date: validatedStart, end_date: validatedEnd } = 
+      validateStatsParams({ period, start_date: startDate || undefined, end_date: endDate || undefined });
     
     let dateFilter = '';
     let dateFormat = '';
@@ -843,7 +807,7 @@ export async function getRevenueStats(period = 'month', startDate = null, endDat
       GROUP BY DATE_FORMAT(o.created_at, '${dateFormat}')
       ORDER BY period DESC
       LIMIT 12
-    `);
+    `) as any[];
     
     const [globalStats] = await pool.query(`
       SELECT 
@@ -855,17 +819,18 @@ export async function getRevenueStats(period = 'month', startDate = null, endDat
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
       WHERE o.status IN ('delivered', 'completed') ${dateFilter}
-    `);
+    `) as any[];
     
     return {
       periods: revenueData,
       global: globalStats[0] || {}
     };
   } catch (error) {
-    console.error('Error fetching revenue stats:', error);
+    logError(error as Error, 'Database', { operation: 'getRevenueStats' });
     throw error;
   }
 }
+
 export async function getTopProducts(limit = 10, period = 'month') {
   try {
     let dateFilter = '';
@@ -891,9 +856,9 @@ export async function getTopProducts(limit = 10, period = 'month') {
         p.category,
         p.price,
         SUM(oi.quantity) as total_sold,
-        SUM(oi.quantity * oi.price) as total_revenue,
+        SUM(oi.quantity * oi.unit_price) as total_revenue,
         COUNT(DISTINCT oi.order_id) as orders_count,
-        AVG(oi.price) as avg_price
+        AVG(oi.unit_price) as avg_price
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
       LEFT JOIN orders o ON oi.order_id = o.id
@@ -901,31 +866,32 @@ export async function getTopProducts(limit = 10, period = 'month') {
       GROUP BY p.id, p.name, p.category, p.price
       ORDER BY total_sold DESC
       LIMIT ?
-    `, [limit]);
+    `, [limit]) as any[];
     
     const [categoryStats] = await pool.query(`
       SELECT 
         p.category,
         COUNT(DISTINCT p.id) as products_count,
         SUM(oi.quantity) as total_sold,
-        SUM(oi.quantity * oi.price) as total_revenue
+        SUM(oi.quantity * oi.unit_price) as total_revenue
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
       LEFT JOIN orders o ON oi.order_id = o.id
       WHERE o.status IN ('delivered', 'completed') ${dateFilter}
       GROUP BY p.category
       ORDER BY total_revenue DESC
-    `);
+    `) as any[];
     
     return {
       top_products: topProducts,
       categories: categoryStats
     };
   } catch (error) {
-    console.error('Error fetching top products:', error);
+    logError(error as Error, 'Database', { operation: 'getTopProducts' });
     throw error;
   }
 }
+
 export async function getDelivererPerformanceStats(period = 'month') {
   try {
     let dateFilter = '';
@@ -955,8 +921,6 @@ export async function getDelivererPerformanceStats(period = 'month') {
         AVG(o.total_price) as avg_order_value,
         COUNT(DISTINCT d.delivery_date) as working_days,
         ROUND(COUNT(DISTINCT o.id) / NULLIF(COUNT(DISTINCT d.delivery_date), 0), 2) as orders_per_day,
-        
-        -- Stats basées sur les stocks
         COALESCE(SUM(ds.initial_quantity), 0) as total_initial_stock,
         COALESCE(SUM(ds.sold_quantity), 0) as total_sold_stock,
         COALESCE(SUM(ds.sold_quantity * p.price), 0) as stock_revenue,
@@ -974,7 +938,7 @@ export async function getDelivererPerformanceStats(period = 'month') {
       WHERE 1=1 ${dateFilter}
       GROUP BY del.id, u.first_name, u.last_name, del.vehicle_type
       ORDER BY total_revenue DESC
-    `);
+    `) as any[];
     
     const [globalStats] = await pool.query(`
       SELECT 
@@ -990,20 +954,20 @@ export async function getDelivererPerformanceStats(period = 'month') {
       LEFT JOIN orders o ON d.id = o.delivery_id AND o.status IN ('delivered', 'completed')
       LEFT JOIN delivery_stocks ds ON d.id = ds.delivery_id
       WHERE 1=1 ${dateFilter}
-    `);
+    `) as any[];
     
     return {
       deliverers: performanceData,
       global: globalStats[0] || {}
     };
   } catch (error) {
-    console.error('Error fetching deliverer performance:', error);
+    logError(error as Error, 'Database', { operation: 'getDelivererPerformanceStats' });
     throw error;
   }
 }
+
 export async function getDashboardStats() {
   try {
-    // Stats du jour
     const [todayStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT o.id) as today_orders,
@@ -1014,9 +978,8 @@ export async function getDashboardStats() {
       LEFT JOIN delivery_stocks ds ON o.delivery_id = ds.delivery_id
       WHERE DATE(o.created_at) = CURDATE()
         AND o.status IN ('delivered', 'completed')
-    `);
+    `) as any[];
     
-    // Stats de la semaine
     const [weekStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT o.id) as week_orders,
@@ -1027,9 +990,8 @@ export async function getDashboardStats() {
       LEFT JOIN delivery_stocks ds ON o.delivery_id = ds.delivery_id
       WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
         AND o.status IN ('delivered', 'completed')
-    `);
+    `) as any[];
     
-    // Stats du mois
     const [monthStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT o.id) as month_orders,
@@ -1040,9 +1002,8 @@ export async function getDashboardStats() {
       LEFT JOIN delivery_stocks ds ON o.delivery_id = ds.delivery_id
       WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         AND o.status IN ('delivered', 'completed')
-    `);
+    `) as any[];
     
-    // Stats globales
     const [globalStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT o.id) as total_orders,
@@ -1058,9 +1019,8 @@ export async function getDashboardStats() {
       LEFT JOIN delivery_stocks ds ON 1=1
       WHERE o.status IN ('delivered', 'completed')
       LIMIT 1
-    `);
+    `) as any[];
     
-    // Produits en stock aujourd'hui
     const [stockStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT ds.id) as total_stock_items,
@@ -1069,7 +1029,7 @@ export async function getDashboardStats() {
       FROM delivery_stocks ds
       INNER JOIN deliveries d ON ds.delivery_id = d.id
       WHERE DATE(d.delivery_date) = CURDATE()
-    `);
+    `) as any[];
     
     return {
       today: todayStats[0] || {},
@@ -1079,15 +1039,15 @@ export async function getDashboardStats() {
       stocks: stockStats[0] || {}
     };
   } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
+    logError(error as Error, 'Database', { operation: 'getDashboardStats' });
     throw error;
   }
 }
 
-export async function getStockStats(deliveryId = null) {
+export async function getStockStats(deliveryId: number | null = null) {
   try {
     let deliveryFilter = '';
-    let deliveryParams = [];
+    let deliveryParams: any[] = [];
     
     if (deliveryId) {
       deliveryFilter = 'AND ds.delivery_id = ?';
@@ -1096,7 +1056,6 @@ export async function getStockStats(deliveryId = null) {
       deliveryFilter = 'AND DATE(d.delivery_date) = CURDATE()';
     }
     
-    // Stats globales des stocks
     const [globalStats] = await pool.query(`
       SELECT 
         COUNT(DISTINCT ds.id) as total_stock_items,
@@ -1113,7 +1072,6 @@ export async function getStockStats(deliveryId = null) {
       WHERE 1=1 ${deliveryFilter}
     `, deliveryParams) as any[];
     
-    // Détails par produit
     const [productDetails] = await pool.query(`
       SELECT 
         p.id as product_id,
@@ -1135,7 +1093,6 @@ export async function getStockStats(deliveryId = null) {
       ORDER BY revenue DESC
     `, deliveryParams) as any[];
     
-    // Produits en rupture de stock (< 10% restant)
     const [lowStockProducts] = await pool.query(`
       SELECT 
         p.id as product_id,
@@ -1158,7 +1115,6 @@ export async function getStockStats(deliveryId = null) {
       ORDER BY remaining_percentage ASC
     `, deliveryParams) as any[];
     
-    // Top produits les plus vendus
     const [topSellingProducts] = await pool.query(`
       SELECT 
         p.id as product_id,
@@ -1178,8 +1134,7 @@ export async function getStockStats(deliveryId = null) {
       LIMIT 10
     `, deliveryParams) as any[];
     
-    // Stats par tournée (si pas de filtre sur une tournée spécifique)
-    let deliveryStats = [];
+    let deliveryStats: any[] = [];
     if (!deliveryId) {
       const [stats] = await pool.query(`
         SELECT 
@@ -1214,31 +1169,27 @@ export async function getStockStats(deliveryId = null) {
       deliveries: deliveryStats
     };
   } catch (error) {
-    console.error('Error fetching stock stats:', error);
+    logError(error as Error, 'Database', { operation: 'getStockStats' });
     throw error;
   }
 }
 
-/**
- * Récupère le deliverer associé à un utilisateur par son ID.
- * @param {number} userId - L'ID de l'utilisateur.
- * @returns {Promise<Object|null>} - Le deliverer correspondant ou null si non trouvé.
- */
-export async function getDelivererByUserId(userId) {
+// FONCTIONS UTILITAIRES
+
+export async function getDelivererByUserId(userId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       'SELECT id FROM deliverers WHERE user_id = ?',
       [userId]
-    );
-    // @ts-expect-error - MySQL2 QueryResult type
-    return rows.length > 0 ? rows[0] : null;
+    ) as QueryResult<Deliverer>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching deliverer by user ID:', error);
+    logError(error as Error, 'Database', { operation: 'getDelivererByUserId', userId });
     throw error;
   }
 }
 
-export async function updateUserPassword(userId, newPassword) {
+export async function updateUserPassword(userId: number, newPassword: string) {
   try {
     const bcrypt = await import('bcryptjs');
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -1250,14 +1201,14 @@ export async function updateUserPassword(userId, newPassword) {
     
     return { success: true };
   } catch (error) {
-    console.error('Error updating user password:', error);
+    logError(error as Error, 'Database', { operation: 'updateUserPassword', userId });
     throw error;
   }
 }
 
-export async function getDelivererById(delivererId) {
+export async function getDelivererById(delivererId: number) {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT 
         d.id,
         d.user_id,
@@ -1278,16 +1229,15 @@ export async function getDelivererById(delivererId) {
       INNER JOIN users u ON d.user_id = u.id
       WHERE d.id = ? AND u.active = true`,
       [delivererId]
-    );
-    // @ts-expect-error - MySQL2 QueryResult type
-    return rows.length > 0 ? rows[0] : null;
+    ) as QueryResult<Deliverer>;
+    return getFirstRow(result);
   } catch (error) {
-    console.error('Error fetching deliverer by ID:', error);
+    logError(error as Error, 'Database', { operation: 'getDelivererById', delivererId });
     throw error;
   }
 }
 
-export async function updateDeliverer(delivererId, data) {
+export async function updateDeliverer(delivererId: number, data: any) {
   try {
     const {
       vehicle_type,
@@ -1297,34 +1247,32 @@ export async function updateDeliverer(delivererId, data) {
       current_longitude
     } = data;
     
-    const [result] = await pool.query(
+    const result = await pool.query(
       `UPDATE deliverers 
        SET vehicle_type = ?, license_plate = ?, is_available = ?, 
            current_latitude = ?, current_longitude = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [vehicle_type, license_plate, is_available, current_latitude, current_longitude, delivererId]
-    );
+    ) as MutationResult;
     
-    // @ts-expect-error - MySQL2 ResultSetHeader type
-    if (result.affectedRows === 0) {
+    if (getAffectedRows(result) === 0) {
       throw new Error('Deliverer not found');
     }
     
     return await getDelivererById(delivererId);
   } catch (error) {
-    console.error('Error updating deliverer:', error);
+    logError(error as Error, 'Database', { operation: 'updateDeliverer', delivererId });
     throw error;
   }
 }
 
-export async function deleteDeliverer(delivererId) {
+export async function deleteDeliverer(delivererId: number) {
   try {
     const connection = await pool.getConnection();
     
     try {
       await connection.beginTransaction();
       
-      // Désactiver l'utilisateur au lieu de supprimer
       await connection.query(
         'UPDATE users SET active = false, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT user_id FROM deliverers WHERE id = ?)',
         [delivererId]
@@ -1344,7 +1292,7 @@ export async function deleteDeliverer(delivererId) {
       connection.release();
     }
   } catch (error) {
-    console.error('Error deleting deliverer:', error);
+    logError(error as Error, 'Database', { operation: 'deleteDeliverer', delivererId });
     throw error;
   }
 }

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     // Vérifier le rate limit
     const rateLimitResult = await checkRateLimit(request, authRateLimiter);
-    
+
     if (!rateLimitResult.success) {
       const error: any = new Error('Too many requests. Please try again later.');
       error.statusCode = 429;
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Récupérer l'utilisateur
     const user = await getUserByEmail(email);
-    
+
     if (!user) {
       const error: any = new Error('Invalid credentials');
       error.statusCode = 401;
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // Vérifier le mot de passe
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    
+
     if (!isPasswordValid) {
       const error: any = new Error('Invalid credentials');
       error.statusCode = 401;
@@ -59,6 +59,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Créer le token JWT
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET is not defined');
+    }
+
     const token = jwt.sign(
       {
         id: user.id,
