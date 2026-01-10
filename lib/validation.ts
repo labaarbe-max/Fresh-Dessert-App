@@ -103,6 +103,35 @@ export const productSchema = z.object({
   active: z.boolean().optional()
 });
 
+// Schéma pour les items de commande
+const orderItemSchema = z.object({
+  product_id: z.number().positive('product_id must be a positive number'),
+  quantity: z.number().positive('quantity must be a positive number')
+});
+
+// Schéma pour la création d'une commande
+export const orderSchema = z.object({
+  user_id: z.number().positive('user_id must be a positive number'),
+  items: z.array(orderItemSchema).min(1, 'items must be a non-empty array'),
+  delivery_address: z.string().trim().min(1, 'delivery_address is required').max(500, 'delivery_address must be less than 500 characters'),
+  delivery_date: z.string().optional(),
+  notes: z.string().max(1000, 'notes must be less than 1000 characters').optional(),
+  delivery_id: z.number().positive('delivery_id must be a positive number').optional()
+});
+
+// Schéma pour la mise à jour d'une commande
+export const orderUpdateSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'preparing', 'ready', 'in_delivery', 'delivered', 'cancelled'], {
+    message: 'Invalid status. Must be one of: pending, confirmed, preparing, ready, in_delivery, delivered, cancelled'
+  }).optional(),
+  delivery_address: z.string().trim().min(1, 'delivery_address must be a non-empty string').max(500, 'delivery_address must be less than 500 characters').optional(),
+  delivery_date: z.string().optional(),
+  notes: z.string().max(1000, 'notes must be less than 1000 characters').optional(),
+  deliverer_id: z.number().positive('deliverer_id must be a positive integer').optional()
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided for update'
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
 
@@ -396,128 +425,22 @@ export function validateProductData(data: unknown): ValidationResult {
     : { error: new ValidationError(result.error.message ?? 'Invalid product data') };
 }
 
-// ORDER UPDATE VALIDATION
-
-interface OrderUpdateData {
-  status?: string;
-  delivery_address?: string;
-  delivery_date?: string;
-  notes?: string;
-  deliverer_id?: number;
-}
-
-export function validateOrderUpdate(data: OrderUpdateData): ValidationResult {
-  // Au moins un champ doit être fourni
-  if (!data.status && !data.delivery_address && !data.delivery_date && !data.notes && !data.deliverer_id) {
-    return { error: new Error('At least one field must be provided for update') };
-  }
-
-  // Validation du statut si fourni
-  if (data.status) {
-    const validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'in_delivery', 'delivered', 'cancelled'];
-    if (!validStatuses.includes(data.status)) {
-      return { error: new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`) };
-    }
-  }
-
-  // Validation de l'adresse si fournie
-  if (data.delivery_address !== undefined) {
-    if (typeof data.delivery_address !== 'string' || data.delivery_address.trim().length === 0) {
-      return { error: new Error('delivery_address must be a non-empty string') };
-    }
-    if (data.delivery_address.length > 500) {
-      return { error: new Error('delivery_address must be less than 500 characters') };
-    }
-  }
-
-  // Validation de la date si fournie
-  if (data.delivery_date && !isValidMySQLDate(data.delivery_date)) {
-    return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
-  }
-
-  // Validation des notes si fournies
-  if (data.notes !== undefined && data.notes !== null) {
-    if (typeof data.notes !== 'string') {
-      return { error: new Error('notes must be a string') };
-    }
-    if (data.notes.length > 1000) {
-      return { error: new Error('notes must be less than 1000 characters') };
-    }
-  }
-
-  // Validation du deliverer_id si fourni
-  if (data.deliverer_id !== undefined && data.deliverer_id !== null) {
-    if (!Number.isInteger(data.deliverer_id) || data.deliverer_id <= 0) {
-      return { error: new Error('deliverer_id must be a positive integer') };
-    }
-  }
-
-  return { valid: true };
+// Validation status, delivery_address, delivery_date, notes, deliverer_id (optionnels)
+export function validateOrderUpdate(data: unknown): ValidationResult {
+  const result = orderUpdateSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid order update data') };
 }
 
 // ORDER DATA VALIDATION
 
-interface OrderData {
-  user_id?: number;
-  items?: any[];
-  delivery_address?: string;
-  delivery_date?: string;
-  notes?: string;
-  delivery_id?: number;
-}
-
-export function validateOrderData(data: any): ValidationResult {
-  const { user_id, items, delivery_address, delivery_date } = data;
-
-  // Champs requis
-  if (!user_id || !Number.isInteger(user_id) || user_id <= 0) {
-    return { error: new Error('user_id is required and must be a positive integer') };
-  }
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return { error: new Error('items must be a non-empty array') };
-  }
-
-  // Validation des items
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (!item.product_id || !Number.isInteger(item.product_id) || item.product_id <= 0) {
-      return { error: new Error(`Item ${i + 1}: product_id must be a positive integer`) };
-    }
-    if (!item.quantity || !Number.isInteger(item.quantity) || item.quantity <= 0) {
-      return { error: new Error(`Item ${i + 1}: quantity must be a positive integer`) };
-    }
-  }
-
-  if (!delivery_address || typeof delivery_address !== 'string' || delivery_address.trim().length === 0) {
-    return { error: new Error('delivery_address is required') };
-  }
-
-  if (delivery_address.length > 500) {
-    return { error: new Error('delivery_address must be less than 500 characters') };
-  }
-
-  // Champs optionnels
-  if (delivery_date && !isValidMySQLDate(delivery_date)) {
-    return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
-  }
-
-  if (data.notes !== undefined && data.notes !== null) {
-    if (typeof data.notes !== 'string') {
-      return { error: new Error('notes must be a string') };
-    }
-    if (data.notes.length > 1000) {
-      return { error: new Error('notes must be less than 1000 characters') };
-    }
-  }
-
-  if (data.delivery_id !== undefined && data.delivery_id !== null) {
-    if (!Number.isInteger(data.delivery_id) || data.delivery_id <= 0) {
-      return { error: new Error('delivery_id must be a positive integer') };
-    }
-  }
-
-  return { valid: true };
+// Validation user_id, items, delivery_address, delivery_date, notes, delivery_id
+export function validateOrderData(data: unknown): ValidationResult {
+  const result = orderSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid order data') };
 }
 
 // DELIVERY DATA VALIDATION
