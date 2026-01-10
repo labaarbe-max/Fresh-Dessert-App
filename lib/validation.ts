@@ -152,6 +152,36 @@ export const deliveryUpdateSchema = z.object({
   message: 'At least one field must be provided for update'
 });
 
+// Schéma pour la création d'une adresse
+export const addressSchema = z.object({
+  label: z.string().trim().min(1, 'label is required').max(100, 'label must be less than 100 characters'),
+  street_address: z.string().trim().min(1, 'street_address is required').max(255, 'street_address must be less than 255 characters'),
+  city: z.string().trim().min(1, 'city is required').max(100, 'city must be less than 100 characters'),
+  postal_code: z.string().trim().min(1, 'postal_code is required').regex(/^\d{5}$/, 'postal_code must be a valid 5-digit French postal code'),
+  floor: z.string().max(20, 'floor must be less than 20 characters').optional(),
+  door_number: z.string().max(20, 'door_number must be less than 20 characters').optional(),
+  building_code: z.string().max(50, 'building_code must be less than 50 characters').optional(),
+  intercom: z.string().max(50, 'intercom must be less than 50 characters').optional(),
+  delivery_instructions: z.string().max(500, 'delivery_instructions must be less than 500 characters').optional(),
+  is_default: z.boolean().optional()
+});
+
+// Schéma pour la mise à jour d'une adresse
+export const addressUpdateSchema = z.object({
+  label: z.string().trim().min(1, 'label must be a non-empty string').max(100, 'label must be less than 100 characters').optional(),
+  street_address: z.string().trim().min(1, 'street_address must be a non-empty string').max(255, 'street_address must be less than 255 characters').optional(),
+  city: z.string().trim().min(1, 'city must be a non-empty string').max(100, 'city must be less than 100 characters').optional(),
+  postal_code: z.string().trim().min(1, 'postal_code must be a non-empty string').regex(/^\d{5}$/, 'postal_code must be a valid 5-digit French postal code').optional(),
+  floor: z.string().max(20, 'floor must be less than 20 characters').optional(),
+  door_number: z.string().max(20, 'door_number must be less than 20 characters').optional(),
+  building_code: z.string().max(50, 'building_code must be less than 50 characters').optional(),
+  intercom: z.string().max(50, 'intercom must be less than 50 characters').optional(),
+  delivery_instructions: z.string().max(500, 'delivery_instructions must be less than 500 characters').optional(),
+  is_default: z.boolean().optional()
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided for update'
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
 
@@ -486,108 +516,22 @@ export function validateDeliveryUpdate(data: unknown): ValidationResult {
 
 // ADDRESS VALIDATION
 
-interface AddressData {
-  label?: string;
-  street_address?: string;
-  city?: string;
-  postal_code?: string;
-  floor?: string;
-  door_number?: string;
-  building_code?: string;
-  intercom?: string;
-  delivery_instructions?: string;
-  is_default?: boolean;
+// Validation label, street_address, city, postal_code, floor, door_number, building_code, intercom, delivery_instructions, is_default
+export function validateAddressData(data: unknown): ValidationResult {
+  const result = addressSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid address data') };
 }
 
-export function validateAddressData(data: AddressData): ValidationResult {
-  const { label, street_address, city, postal_code } = data;
+// ADDRESS UPDATE VALIDATION
 
-  // Champs requis
-  if (!label || typeof label !== 'string' || label.trim().length === 0) {
-    return { error: new Error('label is required') };
-  }
-
-  if (label.length > 100) {
-    return { error: new Error('label must be less than 100 characters') };
-  }
-
-  if (!street_address || typeof street_address !== 'string' || street_address.trim().length === 0) {
-    return { error: new Error('street_address is required') };
-  }
-
-  if (street_address.length > 255) {
-    return { error: new Error('street_address must be less than 255 characters') };
-  }
-
-  if (!city || typeof city !== 'string' || city.trim().length === 0) {
-    return { error: new Error('city is required') };
-  }
-
-  if (city.length > 100) {
-    return { error: new Error('city must be less than 100 characters') };
-  }
-
-  if (!postal_code || typeof postal_code !== 'string' || postal_code.trim().length === 0) {
-    return { error: new Error('postal_code is required') };
-  }
-
-  if (!isValidPostalCode(postal_code)) {
-    return { error: new Error('postal_code must be a valid 5-digit French postal code') };
-  }
-
-  // Champs optionnels
-  if (data.floor !== undefined && data.floor !== null) {
-    if (typeof data.floor !== 'string') {
-      return { error: new Error('floor must be a string') };
-    }
-    if (data.floor.length > 20) {
-      return { error: new Error('floor must be less than 20 characters') };
-    }
-  }
-
-  if (data.door_number !== undefined && data.door_number !== null) {
-    if (typeof data.door_number !== 'string') {
-      return { error: new Error('door_number must be a string') };
-    }
-    if (data.door_number.length > 20) {
-      return { error: new Error('door_number must be less than 20 characters') };
-    }
-  }
-
-  if (data.building_code !== undefined && data.building_code !== null) {
-    if (typeof data.building_code !== 'string') {
-      return { error: new Error('building_code must be a string') };
-    }
-    if (data.building_code.length > 50) {
-      return { error: new Error('building_code must be less than 50 characters') };
-    }
-  }
-
-  if (data.intercom !== undefined && data.intercom !== null) {
-    if (typeof data.intercom !== 'string') {
-      return { error: new Error('intercom must be a string') };
-    }
-    if (data.intercom.length > 50) {
-      return { error: new Error('intercom must be less than 50 characters') };
-    }
-  }
-
-  if (data.delivery_instructions !== undefined && data.delivery_instructions !== null) {
-    if (typeof data.delivery_instructions !== 'string') {
-      return { error: new Error('delivery_instructions must be a string') };
-    }
-    if (data.delivery_instructions.length > 500) {
-      return { error: new Error('delivery_instructions must be less than 500 characters') };
-    }
-  }
-
-  if (data.is_default !== undefined && data.is_default !== null) {
-    if (typeof data.is_default !== 'boolean') {
-      return { error: new Error('is_default must be a boolean') };
-    }
-  }
-
-  return { valid: true };
+// Validation label, street_address, city, postal_code, floor, door_number, building_code, intercom, delivery_instructions, is_default (optionnels)
+export function validateAddressUpdate(data: unknown): ValidationResult {
+  const result = addressUpdateSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid address update data') };
 }
 
 // ============================================================================

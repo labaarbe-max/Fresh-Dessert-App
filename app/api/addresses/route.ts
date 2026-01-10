@@ -1,16 +1,16 @@
 import { withAuth } from '@/lib/api-middleware';
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getAddresses, createAddress } from '@/lib/db';
-import { validateAddressData } from '@/lib/validation';
-import type { CreateAddressDTO } from '@/types';
+import { validateAddressData, addressSchema } from '@/lib/validation';
+import { z } from 'zod';
 
 export const GET = withAuth(async (request, user) => {
   try {
     const addresses = await getAddresses(user.id) as any[];
-    
+
     return createSuccessResponse(
       addresses,
-      { 
+      {
         count: addresses.length,
         user_id: user.id,
         access_level: 'own_addresses_only'
@@ -24,23 +24,23 @@ export const GET = withAuth(async (request, user) => {
 
 export const POST = withAuth(async (request, user) => {
   try {
-    const data = await request.json() as CreateAddressDTO;
-    
-    const validation = validateAddressData(data);
+    const payload = await request.json();
+    const validation = validateAddressData(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Create Address');
     }
-    
+    const data = validation.data as z.infer<typeof addressSchema>;
+
     const addressData = {
       ...data,
       user_id: user.id
     };
-    
+
     const address = await createAddress(addressData);
-    
+
     return createSuccessResponse(
       address,
-      { 
+      {
         message: 'Address created successfully',
         created_for_user: user.id,
         user_role: user.role,
