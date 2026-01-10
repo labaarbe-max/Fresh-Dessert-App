@@ -43,3 +43,6 @@ next-env.d.ts
 
 SQL PERFORMENCE OPTIMIZATION
 database/performance-optimizations.sql
+
+# docs
+docs/
