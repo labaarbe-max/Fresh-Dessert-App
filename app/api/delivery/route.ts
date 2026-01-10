@@ -1,8 +1,8 @@
 import { withAuth } from '@/lib/api-middleware';
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getDeliveries, createDelivery, getDelivererByUserId } from '@/lib/db';
-import { validateDeliveryData } from '@/lib/validation';
-import type { CreateDeliveryDTO } from '@/types';
+import { validateDeliveryData, deliverySchema } from '@/lib/validation';
+import { z } from 'zod';
 
 export const GET = withAuth(async (request, user) => {
   try {
@@ -14,12 +14,12 @@ export const GET = withAuth(async (request, user) => {
         delivererId = (deliverer as any).id;
       }
     }
-    
+
     const deliveries = await getDeliveries(delivererId, user.role) as any[];
-    
+
     return createSuccessResponse(
       deliveries,
-      { 
+      {
         count: deliveries.length,
         user_role: user.role,
         filtered_by_deliverer: user.role === 'deliverer',
@@ -34,19 +34,18 @@ export const GET = withAuth(async (request, user) => {
 
 export const POST = withAuth(async (request, user) => {
   try {
-    const data = await request.json() as CreateDeliveryDTO;
-    
-    // Validation centralisée
-    const validation = validateDeliveryData(data);
+    const payload = await request.json();
+    const validation = validateDeliveryData(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Create Delivery');
     }
-    
+    const data = validation.data as z.infer<typeof deliverySchema>;
+
     const delivery = await createDelivery(data);
-    
+
     return createSuccessResponse(
       delivery,
-      { 
+      {
         message: 'Delivery created successfully',
         created_by: user.role,
         delivery_date: (delivery as any).delivery_date,

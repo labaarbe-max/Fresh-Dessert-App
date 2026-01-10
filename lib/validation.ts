@@ -132,6 +132,26 @@ export const orderUpdateSchema = z.object({
   message: 'At least one field must be provided for update'
 });
 
+// Schéma pour la création d'une livraison
+export const deliverySchema = z.object({
+  deliverer_id: z.number().positive('deliverer_id must be a positive number'),
+  delivery_date: z.string().min(1, 'delivery_date is required'),
+  notes: z.string().max(1000, 'notes must be less than 1000 characters').optional(),
+  order_ids: z.array(z.number().positive('order_id must be a positive number')).optional()
+});
+
+// Schéma pour la mise à jour d'une livraison
+export const deliveryUpdateSchema = z.object({
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled'], {
+    message: 'Invalid status. Must be one of: pending, in_progress, completed, cancelled'
+  }).optional(),
+  delivery_date: z.string().min(1, 'delivery_date must be a non-empty string').optional(),
+  notes: z.string().max(1000, 'notes must be less than 1000 characters').optional(),
+  deliverer_id: z.number().positive('deliverer_id must be a positive integer').optional()
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided for update'
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
 
@@ -445,102 +465,22 @@ export function validateOrderData(data: unknown): ValidationResult {
 
 // DELIVERY DATA VALIDATION
 
-interface DeliveryData {
-  deliverer_id?: number;
-  delivery_date?: string;
-  notes?: string;
-  order_ids?: number[];
-}
-export function validateDeliveryData(data: DeliveryData): ValidationResult {
-  const { deliverer_id, delivery_date } = data;
-
-  // Champs requis
-  if (!deliverer_id || !Number.isInteger(deliverer_id) || deliverer_id <= 0) {
-    return { error: new Error('deliverer_id is required and must be a positive integer') };
-  }
-
-  if (!delivery_date || typeof delivery_date !== 'string' || delivery_date.trim().length === 0) {
-    return { error: new Error('delivery_date is required') };
-  }
-
-  if (!isValidMySQLDate(delivery_date)) {
-    return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
-  }
-
-  // Champs optionnels
-  if (data.notes !== undefined && data.notes !== null) {
-    if (typeof data.notes !== 'string') {
-      return { error: new Error('notes must be a string') };
-    }
-    if (data.notes.length > 1000) {
-      return { error: new Error('notes must be less than 1000 characters') };
-    }
-  }
-
-  if (data.order_ids !== undefined) {
-    if (!Array.isArray(data.order_ids)) {
-      return { error: new Error('order_ids must be an array') };
-    }
-    for (let i = 0; i < data.order_ids.length; i++) {
-      if (!Number.isInteger(data.order_ids[i]) || data.order_ids[i] <= 0) {
-        return { error: new Error(`order_ids[${i}] must be a positive integer`) };
-      }
-    }
-  }
-
-  return { valid: true };
+// Validation deliverer_id, delivery_date, notes, order_ids
+export function validateDeliveryData(data: unknown): ValidationResult {
+  const result = deliverySchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid delivery data') };
 }
 
 // DELIVERY UPDATE VALIDATION
 
-interface DeliveryUpdateData {
-  status?: string;
-  delivery_date?: string;
-  notes?: string;
-  deliverer_id?: number;
-}
-export function validateDeliveryUpdate(data: DeliveryUpdateData, userRole?: string): ValidationResult {
-  // Au moins un champ doit être fourni
-  if (!data.status && !data.delivery_date && !data.notes && !data.deliverer_id) {
-    return { error: new Error('At least one field must be provided for update') };
-  }
-
-  // Validation du statut si fourni
-  if (data.status) {
-    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-    if (!validStatuses.includes(data.status)) {
-      return { error: new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`) };
-    }
-  }
-
-  // Validation de la date si fournie
-  if (data.delivery_date) {
-    if (typeof data.delivery_date !== 'string' || data.delivery_date.trim().length === 0) {
-      return { error: new Error('delivery_date must be a non-empty string') };
-    }
-    if (!isValidMySQLDate(data.delivery_date)) {
-      return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
-    }
-  }
-
-  // Validation des notes si fournies
-  if (data.notes !== undefined && data.notes !== null) {
-    if (typeof data.notes !== 'string') {
-      return { error: new Error('notes must be a string') };
-    }
-    if (data.notes.length > 1000) {
-      return { error: new Error('notes must be less than 1000 characters') };
-    }
-  }
-
-  // Validation du deliverer_id si fourni
-  if (data.deliverer_id !== undefined && data.deliverer_id !== null) {
-    if (!Number.isInteger(data.deliverer_id) || data.deliverer_id <= 0) {
-      return { error: new Error('deliverer_id must be a positive integer') };
-    }
-  }
-
-  return { valid: true };
+// Validation status, delivery_date, notes, deliverer_id (optionnels)
+export function validateDeliveryUpdate(data: unknown): ValidationResult {
+  const result = deliveryUpdateSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid delivery update data') };
 }
 
 
