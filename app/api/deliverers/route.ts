@@ -1,19 +1,19 @@
 import { withAuth } from '@/lib/api-middleware';
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getDeliverers, createDeliverer } from '@/lib/db';
-import { validateDelivererData } from '@/lib/validation';
-import type { CreateDelivererDTO } from '@/types';
+import { validateDelivererData, delivererSchema } from '@/lib/validation';
+import { z } from 'zod';
 
 export const GET = withAuth(async (request, user) => {
   try {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('activeOnly') === 'true';
-    
+
     const deliverers = await getDeliverers(activeOnly) as any[];
-    
+
     return createSuccessResponse(
       deliverers,
-      { 
+      {
         count: deliverers.length,
         active_only: activeOnly,
         requested_by: {
@@ -31,19 +31,18 @@ export const GET = withAuth(async (request, user) => {
 
 export const POST = withAuth(async (request, user) => {
   try {
-    const data = await request.json() as CreateDelivererDTO;
-    
-    // Validation centralisée
-    const validation = validateDelivererData(data);
+    const payload = await request.json();
+    const validation = validateDelivererData(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Create Deliverer');
     }
-    
+    const data = validation.data as z.infer<typeof delivererSchema>;
+
     const deliverer = await createDeliverer(data);
-    
+
     return createSuccessResponse(
       deliverer,
-      { 
+      {
         message: 'Deliverer created successfully',
         created_by: user.role,
         vehicle_type: (deliverer as any).vehicle_type,

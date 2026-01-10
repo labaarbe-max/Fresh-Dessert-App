@@ -7,7 +7,7 @@
  * - Messages d'erreur standardisés
  */
 import { z } from 'zod';
-import { ValidationError } from './error-handler'; 
+import { ValidationError } from './error-handler';
 import { ValidationResult, StatsParams } from '../types/database.types';
 
 // ===============================
@@ -45,9 +45,28 @@ export const passwordChangeSchema = z
     ({ newPassword, confirmPassword }) => newPassword === confirmPassword,
     { message: 'Confirmation password must match new password', path: ['confirmPassword'] }
   );
+
+// Schéma pour la création d'un livreur
+export const delivererSchema = z.object({
+  user_id: z.number().positive('user_id must be a positive number'),
+  vehicle_type: z.enum(['bike', 'scooter', 'car', 'van'], {
+    message: 'vehicle_type must be one of: bike, scooter, car, van'
+  })
+});
+
+// Schéma pour la mise à jour d'un livreur
+export const delivererUpdateSchema = z.object({
+  vehicle_type: z.enum(['bike', 'scooter', 'car', 'van'], {
+    message: 'vehicle_type must be one of: bike, scooter, car, van'
+  }).optional(),
+  license_plate: z.string().optional(),
+  is_available: z.boolean().optional()
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided for update'
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
-// ==========================================
 
 /**
  * Valide un email
@@ -85,7 +104,7 @@ export function isValidQuantity(quantity: number): boolean {
 export function isValidMySQLDate(date: string): boolean {
   const dateRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
   if (!dateRegex.test(date)) return false;
-  
+
   const parsed = new Date(date);
   return !isNaN(parsed.getTime());
 }
@@ -119,16 +138,16 @@ export const schemas: { [key: string]: Schema } = {
   // Utilisateur
   user: {
     email: { required: true, validate: isValidEmail },
-    password: { 
-      required: true, 
-      validate: (pwd: string) => pwd.length >= 8 
+    password: {
+      required: true,
+      validate: (pwd: string) => pwd.length >= 8
     },
     first_name: { required: true, type: 'string' },
     last_name: { required: true, type: 'string' },
     phone: { required: false, validate: isValidPhone },
-    role: { 
-      required: false, 
-      validate: (role: string) => ['client', 'deliverer', 'dispatcher', 'admin'].includes(role) 
+    role: {
+      required: false,
+      validate: (role: string) => ['client', 'deliverer', 'dispatcher', 'admin'].includes(role)
     }
   },
 
@@ -147,9 +166,9 @@ export const schemas: { [key: string]: Schema } = {
     delivery_address: { required: true, type: 'string' },
     delivery_date: { required: false, validate: isValidMySQLDate },
     notes: { required: false, type: 'string' },
-    items: { 
-      required: true, 
-      validate: (items: any) => Array.isArray(items) && items.length > 0 
+    items: {
+      required: true,
+      validate: (items: any) => Array.isArray(items) && items.length > 0
     }
   },
 
@@ -162,9 +181,9 @@ export const schemas: { [key: string]: Schema } = {
   // Livreur
   deliverer: {
     user_id: { required: true, validate: isValidQuantity },
-    vehicle_type: { 
-      required: true, 
-      validate: (type: string) => ['bike', 'scooter', 'car', 'van'].includes(type) 
+    vehicle_type: {
+      required: true,
+      validate: (type: string) => ['bike', 'scooter', 'car', 'van'].includes(type)
     },
     license_plate: { required: false, type: 'string' },
     is_available: { required: false, type: 'boolean' }
@@ -174,9 +193,9 @@ export const schemas: { [key: string]: Schema } = {
   delivery: {
     deliverer_id: { required: true, validate: isValidQuantity },
     delivery_date: { required: true, validate: isValidMySQLDate },
-    status: { 
-      required: false, 
-      validate: (status: string) => ['pending', 'in_progress', 'completed', 'cancelled'].includes(status) 
+    status: {
+      required: false,
+      validate: (status: string) => ['pending', 'in_progress', 'completed', 'cancelled'].includes(status)
     }
   },
 
@@ -287,22 +306,12 @@ export function validateStatsParams(params: StatsParamsInput): StatsParams {
   return { period, start_date: startDate, end_date: endDate };
 }
 
-interface DelivererData {
-  user_id?: number;
-  vehicle_type?: string;
-}
-
-export function validateDelivererData(data: DelivererData): ValidationResult {
-  if (!data.user_id || !data.vehicle_type) {
-    return { error: new Error('Missing required fields: user_id, vehicle_type') };
-  }
-  
-  const validVehicleTypes = ['bike', 'scooter', 'car', 'van'];
-  if (!validVehicleTypes.includes(data.vehicle_type)) {
-    return { error: new Error(`Invalid vehicle_type. Must be one of: ${validVehicleTypes.join(', ')}`) };
-  }
-  
-  return { valid: true };
+// Validation user_id, vehicle_type
+export function validateDelivererData(data: unknown): ValidationResult {
+  const result = delivererSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid deliverer data') };
 }
 
 
@@ -330,31 +339,12 @@ export function validatePasswordChange(data: unknown): ValidationResult {
     : { error: new ValidationError(result.error.message ?? 'Invalid password change data') };
 }
 
-interface DelivererUpdateData {
-  vehicle_type?: string;
-  license_plate?: string;
-  is_available?: boolean;
-}
-
-export function validateDelivererUpdate(data: DelivererUpdateData): ValidationResult {
-  const { vehicle_type, license_plate, is_available } = data;
-  
-  if (vehicle_type) {
-    const validVehicleTypes = ['bike', 'scooter', 'car', 'van'];
-    if (!validVehicleTypes.includes(vehicle_type)) {
-      return { error: new Error(`Invalid vehicle_type. Must be one of: ${validVehicleTypes.join(', ')}`) };
-    }
-  }
-  
-  if (license_plate && typeof license_plate !== 'string') {
-    return { error: new Error('Invalid license_plate format') };
-  }
-  
-  if (is_available !== undefined && typeof is_available !== 'boolean') {
-    return { error: new Error('is_available must be a boolean') };
-  }
-  
-  return { valid: true };
+// Validation vehicle_type, license_plate, is_available (optionnels)
+export function validateDelivererUpdate(data: unknown): ValidationResult {
+  const result = delivererUpdateSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid deliverer update data') };
 }
 
 // ============================================================================
@@ -374,62 +364,62 @@ interface ProductData {
 
 export function validateProductData(data: ProductData): ValidationResult {
   const { name, description, category, price } = data;
-  
+
   // Champs requis
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     return { error: new Error('Product name is required') };
   }
-  
+
   if (name.length > 100) {
     return { error: new Error('Product name must be less than 100 characters') };
   }
-  
+
   if (!description || typeof description !== 'string' || description.trim().length === 0) {
     return { error: new Error('Product description is required') };
   }
-  
+
   if (description.length > 500) {
     return { error: new Error('Product description must be less than 500 characters') };
   }
-  
+
   if (!category || typeof category !== 'string') {
     return { error: new Error('Product category is required') };
   }
-  
+
   const validCategories = ['dessert', 'cake', 'pastry', 'ice_cream', 'beverage', 'other'];
   if (!validCategories.includes(category)) {
     return { error: new Error(`Invalid category. Must be one of: ${validCategories.join(', ')}`) };
   }
-  
+
   if (price === undefined || price === null) {
     return { error: new Error('Product price is required') };
   }
-  
+
   if (!isValidPrice(price)) {
     return { error: new Error('Product price must be a positive number') };
   }
-  
+
   if (price > 10000) {
     return { error: new Error('Product price must be less than 10000') };
   }
-  
+
   // Champs optionnels
   if (data.allergens && typeof data.allergens !== 'string') {
     return { error: new Error('Allergens must be a string') };
   }
-  
+
   if (data.image_url && typeof data.image_url !== 'string') {
     return { error: new Error('Image URL must be a string') };
   }
-  
+
   if (data.emoji && typeof data.emoji !== 'string') {
     return { error: new Error('Emoji must be a string') };
   }
-  
+
   if (data.active !== undefined && typeof data.active !== 'boolean') {
     return { error: new Error('Active must be a boolean') };
   }
-  
+
   return { valid: true };
 }
 
@@ -448,7 +438,7 @@ export function validateOrderUpdate(data: OrderUpdateData): ValidationResult {
   if (!data.status && !data.delivery_address && !data.delivery_date && !data.notes && !data.deliverer_id) {
     return { error: new Error('At least one field must be provided for update') };
   }
-  
+
   // Validation du statut si fourni
   if (data.status) {
     const validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'in_delivery', 'delivered', 'cancelled'];
@@ -456,7 +446,7 @@ export function validateOrderUpdate(data: OrderUpdateData): ValidationResult {
       return { error: new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`) };
     }
   }
-  
+
   // Validation de l'adresse si fournie
   if (data.delivery_address !== undefined) {
     if (typeof data.delivery_address !== 'string' || data.delivery_address.trim().length === 0) {
@@ -466,12 +456,12 @@ export function validateOrderUpdate(data: OrderUpdateData): ValidationResult {
       return { error: new Error('delivery_address must be less than 500 characters') };
     }
   }
-  
+
   // Validation de la date si fournie
   if (data.delivery_date && !isValidMySQLDate(data.delivery_date)) {
     return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
   }
-  
+
   // Validation des notes si fournies
   if (data.notes !== undefined && data.notes !== null) {
     if (typeof data.notes !== 'string') {
@@ -481,14 +471,14 @@ export function validateOrderUpdate(data: OrderUpdateData): ValidationResult {
       return { error: new Error('notes must be less than 1000 characters') };
     }
   }
-  
+
   // Validation du deliverer_id si fourni
   if (data.deliverer_id !== undefined && data.deliverer_id !== null) {
     if (!Number.isInteger(data.deliverer_id) || data.deliverer_id <= 0) {
       return { error: new Error('deliverer_id must be a positive integer') };
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -505,16 +495,16 @@ interface OrderData {
 
 export function validateOrderData(data: any): ValidationResult {
   const { user_id, items, delivery_address, delivery_date } = data;
-  
+
   // Champs requis
   if (!user_id || !Number.isInteger(user_id) || user_id <= 0) {
     return { error: new Error('user_id is required and must be a positive integer') };
   }
-  
+
   if (!Array.isArray(items) || items.length === 0) {
     return { error: new Error('items must be a non-empty array') };
   }
-  
+
   // Validation des items
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -525,20 +515,20 @@ export function validateOrderData(data: any): ValidationResult {
       return { error: new Error(`Item ${i + 1}: quantity must be a positive integer`) };
     }
   }
-  
+
   if (!delivery_address || typeof delivery_address !== 'string' || delivery_address.trim().length === 0) {
     return { error: new Error('delivery_address is required') };
   }
-  
+
   if (delivery_address.length > 500) {
     return { error: new Error('delivery_address must be less than 500 characters') };
   }
-  
+
   // Champs optionnels
   if (delivery_date && !isValidMySQLDate(delivery_date)) {
     return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
   }
-  
+
   if (data.notes !== undefined && data.notes !== null) {
     if (typeof data.notes !== 'string') {
       return { error: new Error('notes must be a string') };
@@ -547,13 +537,13 @@ export function validateOrderData(data: any): ValidationResult {
       return { error: new Error('notes must be less than 1000 characters') };
     }
   }
-  
+
   if (data.delivery_id !== undefined && data.delivery_id !== null) {
     if (!Number.isInteger(data.delivery_id) || data.delivery_id <= 0) {
       return { error: new Error('delivery_id must be a positive integer') };
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -567,20 +557,20 @@ interface DeliveryData {
 }
 export function validateDeliveryData(data: DeliveryData): ValidationResult {
   const { deliverer_id, delivery_date } = data;
-  
+
   // Champs requis
   if (!deliverer_id || !Number.isInteger(deliverer_id) || deliverer_id <= 0) {
     return { error: new Error('deliverer_id is required and must be a positive integer') };
   }
-  
+
   if (!delivery_date || typeof delivery_date !== 'string' || delivery_date.trim().length === 0) {
     return { error: new Error('delivery_date is required') };
   }
-  
+
   if (!isValidMySQLDate(delivery_date)) {
     return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
   }
-  
+
   // Champs optionnels
   if (data.notes !== undefined && data.notes !== null) {
     if (typeof data.notes !== 'string') {
@@ -590,7 +580,7 @@ export function validateDeliveryData(data: DeliveryData): ValidationResult {
       return { error: new Error('notes must be less than 1000 characters') };
     }
   }
-  
+
   if (data.order_ids !== undefined) {
     if (!Array.isArray(data.order_ids)) {
       return { error: new Error('order_ids must be an array') };
@@ -601,7 +591,7 @@ export function validateDeliveryData(data: DeliveryData): ValidationResult {
       }
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -618,7 +608,7 @@ export function validateDeliveryUpdate(data: DeliveryUpdateData, userRole?: stri
   if (!data.status && !data.delivery_date && !data.notes && !data.deliverer_id) {
     return { error: new Error('At least one field must be provided for update') };
   }
-  
+
   // Validation du statut si fourni
   if (data.status) {
     const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
@@ -626,7 +616,7 @@ export function validateDeliveryUpdate(data: DeliveryUpdateData, userRole?: stri
       return { error: new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`) };
     }
   }
-  
+
   // Validation de la date si fournie
   if (data.delivery_date) {
     if (typeof data.delivery_date !== 'string' || data.delivery_date.trim().length === 0) {
@@ -636,7 +626,7 @@ export function validateDeliveryUpdate(data: DeliveryUpdateData, userRole?: stri
       return { error: new Error('delivery_date must be in format YYYY-MM-DD HH:mm:ss') };
     }
   }
-  
+
   // Validation des notes si fournies
   if (data.notes !== undefined && data.notes !== null) {
     if (typeof data.notes !== 'string') {
@@ -646,14 +636,14 @@ export function validateDeliveryUpdate(data: DeliveryUpdateData, userRole?: stri
       return { error: new Error('notes must be less than 1000 characters') };
     }
   }
-  
+
   // Validation du deliverer_id si fourni
   if (data.deliverer_id !== undefined && data.deliverer_id !== null) {
     if (!Number.isInteger(data.deliverer_id) || data.deliverer_id <= 0) {
       return { error: new Error('deliverer_id must be a positive integer') };
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -675,40 +665,40 @@ interface AddressData {
 
 export function validateAddressData(data: AddressData): ValidationResult {
   const { label, street_address, city, postal_code } = data;
-  
+
   // Champs requis
   if (!label || typeof label !== 'string' || label.trim().length === 0) {
     return { error: new Error('label is required') };
   }
-  
+
   if (label.length > 100) {
     return { error: new Error('label must be less than 100 characters') };
   }
-  
+
   if (!street_address || typeof street_address !== 'string' || street_address.trim().length === 0) {
     return { error: new Error('street_address is required') };
   }
-  
+
   if (street_address.length > 255) {
     return { error: new Error('street_address must be less than 255 characters') };
   }
-  
+
   if (!city || typeof city !== 'string' || city.trim().length === 0) {
     return { error: new Error('city is required') };
   }
-  
+
   if (city.length > 100) {
     return { error: new Error('city must be less than 100 characters') };
   }
-  
+
   if (!postal_code || typeof postal_code !== 'string' || postal_code.trim().length === 0) {
     return { error: new Error('postal_code is required') };
   }
-  
+
   if (!isValidPostalCode(postal_code)) {
     return { error: new Error('postal_code must be a valid 5-digit French postal code') };
   }
-  
+
   // Champs optionnels
   if (data.floor !== undefined && data.floor !== null) {
     if (typeof data.floor !== 'string') {
@@ -718,7 +708,7 @@ export function validateAddressData(data: AddressData): ValidationResult {
       return { error: new Error('floor must be less than 20 characters') };
     }
   }
-  
+
   if (data.door_number !== undefined && data.door_number !== null) {
     if (typeof data.door_number !== 'string') {
       return { error: new Error('door_number must be a string') };
@@ -727,7 +717,7 @@ export function validateAddressData(data: AddressData): ValidationResult {
       return { error: new Error('door_number must be less than 20 characters') };
     }
   }
-  
+
   if (data.building_code !== undefined && data.building_code !== null) {
     if (typeof data.building_code !== 'string') {
       return { error: new Error('building_code must be a string') };
@@ -736,7 +726,7 @@ export function validateAddressData(data: AddressData): ValidationResult {
       return { error: new Error('building_code must be less than 50 characters') };
     }
   }
-  
+
   if (data.intercom !== undefined && data.intercom !== null) {
     if (typeof data.intercom !== 'string') {
       return { error: new Error('intercom must be a string') };
@@ -745,7 +735,7 @@ export function validateAddressData(data: AddressData): ValidationResult {
       return { error: new Error('intercom must be less than 50 characters') };
     }
   }
-  
+
   if (data.delivery_instructions !== undefined && data.delivery_instructions !== null) {
     if (typeof data.delivery_instructions !== 'string') {
       return { error: new Error('delivery_instructions must be a string') };
@@ -754,13 +744,13 @@ export function validateAddressData(data: AddressData): ValidationResult {
       return { error: new Error('delivery_instructions must be less than 500 characters') };
     }
   }
-  
+
   if (data.is_default !== undefined && data.is_default !== null) {
     if (typeof data.is_default !== 'boolean') {
       return { error: new Error('is_default must be a boolean') };
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -776,20 +766,20 @@ interface StockData {
 
 export function validateStockData(data: StockData): ValidationResult {
   const { delivery_id, product_id, initial_quantity } = data;
-  
+
   // Champs requis
   if (!delivery_id || !Number.isInteger(delivery_id) || delivery_id <= 0) {
     return { error: new Error('delivery_id is required and must be a positive integer') };
   }
-  
+
   if (!product_id || !Number.isInteger(product_id) || product_id <= 0) {
     return { error: new Error('product_id is required and must be a positive integer') };
   }
-  
+
   if (!initial_quantity || !Number.isInteger(initial_quantity) || initial_quantity <= 0) {
     return { error: new Error('initial_quantity is required and must be a positive integer') };
   }
-  
+
   return { valid: true };
 }
 
@@ -807,21 +797,21 @@ export function validateStockUpdate(data: StockUpdateData): ValidationResult {
   if (data.initial_quantity === undefined && data.current_quantity === undefined) {
     return { error: new Error('At least one field must be provided for update') };
   }
-  
+
   // Validation de initial_quantity si fourni
   if (data.initial_quantity !== undefined) {
     if (!Number.isInteger(data.initial_quantity) || data.initial_quantity < 0) {
       return { error: new Error('initial_quantity must be a non-negative integer') };
     }
   }
-  
+
   // Validation de current_quantity si fourni
   if (data.current_quantity !== undefined) {
     if (!Number.isInteger(data.current_quantity) || data.current_quantity < 0) {
       return { error: new Error('current_quantity must be a non-negative integer') };
     }
   }
-  
+
   return { valid: true };
 }
 
@@ -839,28 +829,28 @@ interface BulkStockData {
 
 export function validateBulkStockData(data: BulkStockData): ValidationResult {
   const { delivery_id, stocks } = data;
-  
+
   // Champs requis
   if (!delivery_id || !Number.isInteger(delivery_id) || delivery_id <= 0) {
     return { error: new Error('delivery_id is required and must be a positive integer') };
   }
-  
+
   if (!Array.isArray(stocks) || stocks.length === 0) {
     return { error: new Error('stocks must be a non-empty array') };
   }
-  
+
   // Validation de chaque stock
   for (let i = 0; i < stocks.length; i++) {
     const stock = stocks[i];
-    
+
     if (!stock.product_id || !Number.isInteger(stock.product_id) || stock.product_id <= 0) {
       return { error: new Error(`Stock ${i + 1}: product_id must be a positive integer`) };
     }
-    
+
     if (!stock.initial_quantity || !Number.isInteger(stock.initial_quantity) || stock.initial_quantity <= 0) {
       return { error: new Error(`Stock ${i + 1}: initial_quantity must be a positive integer`) };
     }
   }
-  
+
   return { valid: true };
 }
