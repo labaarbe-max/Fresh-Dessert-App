@@ -89,6 +89,20 @@ export const bulkStockSchema = z.object({
   })).min(1, 'stocks must be a non-empty array')
 });
 
+// Schéma pour la création d'un produit
+export const productSchema = z.object({
+  name: z.string().trim().min(1, 'Product name is required').max(100, 'Product name must be less than 100 characters'),
+  description: z.string().trim().min(1, 'Product description is required').max(500, 'Product description must be less than 500 characters'),
+  category: z.enum(['dessert', 'cake', 'pastry', 'ice_cream', 'beverage', 'other'], {
+    message: 'Invalid category. Must be one of: dessert, cake, pastry, ice_cream, beverage, other'
+  }),
+  price: z.number().positive('Product price must be a positive number').max(10000, 'Product price must be less than 10000'),
+  allergens: z.string().optional(),
+  image_url: z.string().optional(),
+  emoji: z.string().optional(),
+  active: z.boolean().optional()
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
 
@@ -374,77 +388,12 @@ export function validateDelivererUpdate(data: unknown): ValidationResult {
 // ============================================================================
 // PRODUCT VALIDATION
 // ============================================================================
-
-interface ProductData {
-  name?: string;
-  description?: string;
-  category?: string;
-  price?: number;
-  allergens?: string;
-  image_url?: string;
-  emoji?: string;
-  active?: boolean;
-}
-
-export function validateProductData(data: ProductData): ValidationResult {
-  const { name, description, category, price } = data;
-
-  // Champs requis
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return { error: new Error('Product name is required') };
-  }
-
-  if (name.length > 100) {
-    return { error: new Error('Product name must be less than 100 characters') };
-  }
-
-  if (!description || typeof description !== 'string' || description.trim().length === 0) {
-    return { error: new Error('Product description is required') };
-  }
-
-  if (description.length > 500) {
-    return { error: new Error('Product description must be less than 500 characters') };
-  }
-
-  if (!category || typeof category !== 'string') {
-    return { error: new Error('Product category is required') };
-  }
-
-  const validCategories = ['dessert', 'cake', 'pastry', 'ice_cream', 'beverage', 'other'];
-  if (!validCategories.includes(category)) {
-    return { error: new Error(`Invalid category. Must be one of: ${validCategories.join(', ')}`) };
-  }
-
-  if (price === undefined || price === null) {
-    return { error: new Error('Product price is required') };
-  }
-
-  if (!isValidPrice(price)) {
-    return { error: new Error('Product price must be a positive number') };
-  }
-
-  if (price > 10000) {
-    return { error: new Error('Product price must be less than 10000') };
-  }
-
-  // Champs optionnels
-  if (data.allergens && typeof data.allergens !== 'string') {
-    return { error: new Error('Allergens must be a string') };
-  }
-
-  if (data.image_url && typeof data.image_url !== 'string') {
-    return { error: new Error('Image URL must be a string') };
-  }
-
-  if (data.emoji && typeof data.emoji !== 'string') {
-    return { error: new Error('Emoji must be a string') };
-  }
-
-  if (data.active !== undefined && typeof data.active !== 'boolean') {
-    return { error: new Error('Active must be a boolean') };
-  }
-
-  return { valid: true };
+// Validation name, description, category, price, allergens, image_url, emoji, active
+export function validateProductData(data: unknown): ValidationResult {
+  const result = productSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid product data') };
 }
 
 // ORDER UPDATE VALIDATION

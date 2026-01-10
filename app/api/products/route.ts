@@ -1,23 +1,23 @@
 import { withAuth } from '@/lib/api-middleware';
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getProducts, createProduct } from '@/lib/db';
-import { validateProductData } from '@/lib/validation';
-import type { CreateProductDTO } from '@/types';
+import { validateProductData, productSchema } from '@/lib/validation';
+import { z } from 'zod';
 
 export const GET = withAuth(async (request, user) => {
   try {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('activeOnly') === 'true';
     const category = searchParams.get('category');
-    
+
     const products = await getProducts(activeOnly, category) as any[];
-    
+
     return createSuccessResponse(
       products,
-      { 
-        count: products.length, 
-        category, 
-        activeOnly 
+      {
+        count: products.length,
+        category,
+        activeOnly
       },
       200
     );
@@ -28,16 +28,15 @@ export const GET = withAuth(async (request, user) => {
 
 export const POST = withAuth(async (request, user) => {
   try {
-    const data = await request.json() as CreateProductDTO;
-    
-    // Validation centralisée
-    const validation = validateProductData(data);
+    const payload = await request.json();
+    const validation = validateProductData(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Create Product');
     }
-    
+    const data = validation.data as z.infer<typeof productSchema>;
+
     const product = await createProduct(data);
-    
+
     return createSuccessResponse(
       product,
       { message: 'Product created successfully' },
