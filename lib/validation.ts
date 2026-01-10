@@ -6,9 +6,45 @@
  * - Schémas de validation réutilisables
  * - Messages d'erreur standardisés
  */
-
+import { z } from 'zod';
+import { ValidationError } from './error-handler'; 
 import { ValidationResult, StatsParams } from '../types/database.types';
 
+// ===============================
+// SCHÉMAS DE VALIDATION AUTH
+// ===============================
+
+const passwordSchema = z
+  .string()
+  .min(12, 'Password must be at least 12 characters long')
+  .regex(/(?=.*[A-Za-z])/, 'Password must contain at least one letter')
+  .regex(/(?=.*\d)/, 'Password must contain at least one number')
+  .regex(/(?=.*[@$!%*#?&])/, 'Password must contain at least one special character (@$!%*#?&)');
+
+export const loginSchema = z.object({
+  email: z.string().trim().email('Invalid email format'),
+  password: passwordSchema
+});
+
+export const registerSchema = z.object({
+  email: z.string().trim().email('Invalid email format'),
+  password: passwordSchema,
+  first_name: z.string().trim().min(2).max(50),
+  last_name: z.string().trim().min(2).max(50),
+  phone: z.string().trim().regex(/^[\+]?[0-9\s\-]{10,15}$/, 'Invalid phone format').optional(),
+  role: z.enum(['client', 'deliverer', 'dispatcher', 'admin'])
+});
+
+export const passwordChangeSchema = z
+  .object({
+    currentPassword: passwordSchema,
+    newPassword: passwordSchema,
+    confirmPassword: passwordSchema
+  })
+  .refine(
+    ({ newPassword, confirmPassword }) => newPassword === confirmPassword,
+    { message: 'Confirmation password must match new password', path: ['confirmPassword'] }
+  );
 // ==========================================
 // VALIDATEURS DE BASE
 // ==========================================
@@ -269,101 +305,29 @@ export function validateDelivererData(data: DelivererData): ValidationResult {
   return { valid: true };
 }
 
-interface LoginData {
-  email?: string;
-  password?: string;
+
+// Validation email, // Validation mot de passe (longueur minimale et complexité)
+export function validateLoginData(data: unknown): ValidationResult {
+  const result = loginSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid login data') };
 }
 
-export function validateLoginData(data: LoginData): ValidationResult {
-  if (!data.email || !data.password) {
-    return { error: new Error('Missing email or password') };
-  }
-  
-  // Validation email
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(data.email)) {
-    return { error: new Error('Invalid email format') };
-  }
-  
-  // Validation mot de passe (longueur minimale et complexité)
-  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{12,}$/;
-  if (!passwordRegex.test(data.password)) {
-    return { error: new Error('Password must be at least 12 characters long and contain at least one letter, one number, and one special character (@$!%*#?&)') };
-  }
-  
-  return { valid: true };
+// Champs requis, email, mot de passe (longueur minimale et complexité), nom, prénom, téléphone (optionnel), rôle
+export function validateRegisterData(data: unknown): ValidationResult {
+  const result = registerSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid registration data') };
 }
 
-interface RegisterData {
-  email?: string;
-  password?: string;
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
-  role?: string;
-}
-
-export function validateRegisterData(data: RegisterData): ValidationResult {
-  const { email, password, first_name, last_name, phone, role } = data;
-  
-  // Champs requis
-  if (!email || !password || !first_name || !last_name || !role) {
-    return { error: new Error('Missing required fields: email, password, first_name, last_name, role') };
-  }
-  
-  // Validation email
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return { error: new Error('Invalid email format') };
-  }
-  
-  // Validation mot de passe (12+ caractères, complexité)
-  if (password.length < 12) {
-    return { error: new Error('Password must be at least 12 characters') };
-  }
-  
-  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{12,}$/;
-  if (!passwordRegex.test(password)) {
-    return { error: new Error('Password must contain at least one letter, one number, and one special character (@$!%*#?&)') };
-  }
-  
-  // Validation rôle
-  const validRoles = ['client', 'deliverer', 'dispatcher', 'admin'];
-  if (!validRoles.includes(role)) {
-    return { error: new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`) };
-  }
-  
-  // Validation téléphone (optionnel)
-  if (phone && !/^[\+]?[0-9\s\-]{10,15}$/.test(phone)) {
-    return { error: new Error('Invalid phone format') };
-  }
-  
-  return { valid: true };
-}
-
-interface PasswordChangeData {
-  current_password?: string;
-  new_password?: string;
-}
-
-export function validatePasswordChange(data: PasswordChangeData): ValidationResult {
-  const { current_password, new_password } = data;
-  
-  if (!current_password || !new_password) {
-    return { error: new Error('Missing required fields: current_password, new_password') };
-  }
-  
-  // Validation du nouveau mot de passe (même règles que register)
-  if (new_password.length < 12) {
-    return { error: new Error('New password must be at least 12 characters long') };
-  }
-  
-  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{12,}$/;
-  if (!passwordRegex.test(new_password)) {
-    return { error: new Error('New password must contain at least one letter, one number, and one special character (@$!%*#?&)') };
-  }
-  
-  return { valid: true };
+// Validation du nouveau mot de passe (même règles que register), champs requis, mot de passe actuel, nouveau mot de passe (longueur minimale et complexité)
+export function validatePasswordChange(data: unknown): ValidationResult {
+  const result = passwordChangeSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid password change data') };
 }
 
 interface DelivererUpdateData {

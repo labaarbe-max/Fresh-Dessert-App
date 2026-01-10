@@ -1,11 +1,11 @@
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getUserByEmail } from '@/lib/db';
 import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
-import { validateLoginData } from '@/lib/validation';
+import { validateLoginData, loginSchema } from '@/lib/validation';
 import { NextRequest } from 'next/server';
-import type { LoginDTO } from '@/types';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,13 +25,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { email, password } = await request.json() as LoginDTO;
-
-    // Validation centralisée
-    const validation = validateLoginData({ email, password });
+    const payload = await request.json();
+    const validation = validateLoginData(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Login');
     }
+    const { email, password } = validation.data as z.infer<typeof loginSchema>;
 
     // Récupérer l'utilisateur
     const user = await getUserByEmail(email);

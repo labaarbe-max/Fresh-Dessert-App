@@ -1,10 +1,10 @@
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { createUser, getUserByEmail } from '@/lib/db';
 import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
-import { validateRegisterData } from '@/lib/validation';
+import { validateRegisterData, registerSchema } from '@/lib/validation';
 import { NextRequest } from 'next/server';
-import type { RegisterDTO } from '@/types';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
 export async function POST(request: NextRequest) {
     try {
@@ -23,14 +23,13 @@ export async function POST(request: NextRequest) {
                 }
             });
         }
-
-        const { email, password, first_name, last_name, phone, role } = await request.json() as RegisterDTO;
-
-        // Validation centralisée
-        const validation = validateRegisterData({ email, password, first_name, last_name, phone, role });
+        // Validation centralisée avec zod
+        const payload = await request.json();
+        const validation = validateRegisterData(payload);
         if (validation.error) {
             return handleApiError(validation.error, 'Register');
         }
+        const { email, password, first_name, last_name, phone, role } = validation.data as z.infer<typeof registerSchema>;
 
         // Vérifier si l'email existe déjà
         const existingUser = await getUserByEmail(email);

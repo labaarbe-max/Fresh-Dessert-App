@@ -353,9 +353,10 @@ export interface DashboardStats {
 // VALIDATION TYPES
 // ==========================================
 
-export interface ValidationResult {
+export interface ValidationResult<T = unknown> {
   valid?: boolean;
   error?: Error;
+  data?: T;
 }
 
 export interface StatsParams {

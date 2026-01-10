@@ -2,15 +2,15 @@ import { withAuth } from '@/lib/api-middleware';
 import { createSuccessResponse, handleApiError } from '@/lib/error-handler';
 import { getUserByEmail, updateUserPassword } from '@/lib/db';
 import { authRateLimiter, checkRateLimit } from '@/lib/rate-limit';
-import { validatePasswordChange } from '@/lib/validation';
-import type { PasswordChangeDTO } from '@/types';
+import { validatePasswordChange, passwordChangeSchema } from '@/lib/validation';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
 export const POST = withAuth(async (request, user) => {
   try {
     // Vérifier le rate limit
     const rateLimitResult = await checkRateLimit(request, authRateLimiter);
-    
+
     if (!rateLimitResult.success) {
       const error: any = new Error('Too many requests. Please try again later.');
       error.statusCode = 429;
@@ -25,16 +25,19 @@ export const POST = withAuth(async (request, user) => {
     }
 
     // ✅ APRÈS (bons noms)
-const { currentPassword, newPassword } = await request.json() as PasswordChangeDTO;
-
-// Validation centralisée - convertir pour la fonction de validation
-const validation = validatePasswordChange({ 
-  current_password: currentPassword, 
-  new_password: newPassword 
-});
+    const payload = await request.json();
+    const validation = validatePasswordChange(payload);
     if (validation.error) {
       return handleApiError(validation.error, 'Change Password');
     }
+    if (!validation.data) {
+      const error: any = new Error('Invalid validation data');
+      error.statusCode = 400;
+      return handleApiError(error, 'Change Password');
+    }
+    const data = validation.data as z.infer<typeof passwordChangeSchema>;
+    const currentPassword = data.currentPassword;
+    const newPassword = data.newPassword;
 
     // Récupérer l'utilisateur depuis la base de données
     const dbUser = await getUserByEmail(user.email);
