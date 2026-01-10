@@ -65,6 +65,30 @@ export const delivererUpdateSchema = z.object({
   message: 'At least one field must be provided for update'
 });
 
+// Schéma pour la création d'un stock
+export const stockSchema = z.object({
+  delivery_id: z.number().positive('delivery_id must be a positive number'),
+  product_id: z.number().positive('product_id must be a positive number'),
+  initial_quantity: z.number().positive('initial_quantity must be a positive number')
+});
+
+// Schéma pour la mise à jour d'un stock
+export const stockUpdateSchema = z.object({
+  initial_quantity: z.number().int().nonnegative('initial_quantity must be a non-negative integer').optional(),
+  current_quantity: z.number().int().nonnegative('current_quantity must be a non-negative integer').optional()
+}).refine(data => data.initial_quantity !== undefined || data.current_quantity !== undefined, {
+  message: 'At least one field must be provided for update'
+});
+
+// Schéma pour la création en masse de stocks
+export const bulkStockSchema = z.object({
+  delivery_id: z.number().positive('delivery_id must be a positive number'),
+  stocks: z.array(z.object({
+    product_id: z.number().positive('product_id must be a positive number'),
+    initial_quantity: z.number().positive('initial_quantity must be a positive number')
+  })).min(1, 'stocks must be a non-empty array')
+});
+
 // ==========================================
 // VALIDATEURS DE BASE
 
@@ -758,99 +782,26 @@ export function validateAddressData(data: AddressData): ValidationResult {
 // STOCK VALIDATION
 // ============================================================================
 
-interface StockData {
-  delivery_id?: number;
-  product_id?: number;
-  initial_quantity?: number;
+// Validation delivery_id, product_id, initial_quantity
+export function validateStockData(data: unknown): ValidationResult {
+  const result = stockSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid stock data') };
 }
 
-export function validateStockData(data: StockData): ValidationResult {
-  const { delivery_id, product_id, initial_quantity } = data;
-
-  // Champs requis
-  if (!delivery_id || !Number.isInteger(delivery_id) || delivery_id <= 0) {
-    return { error: new Error('delivery_id is required and must be a positive integer') };
-  }
-
-  if (!product_id || !Number.isInteger(product_id) || product_id <= 0) {
-    return { error: new Error('product_id is required and must be a positive integer') };
-  }
-
-  if (!initial_quantity || !Number.isInteger(initial_quantity) || initial_quantity <= 0) {
-    return { error: new Error('initial_quantity is required and must be a positive integer') };
-  }
-
-  return { valid: true };
+// Validation initial_quantity, current_quantity (optionnels)
+export function validateStockUpdate(data: unknown): ValidationResult {
+  const result = stockUpdateSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid stock update data') };
 }
 
-// ============================================================================
-// STOCK UPDATE VALIDATION
-// ============================================================================
-
-interface StockUpdateData {
-  initial_quantity?: number;
-  current_quantity?: number;
-}
-
-export function validateStockUpdate(data: StockUpdateData): ValidationResult {
-  // Au moins un champ doit être fourni
-  if (data.initial_quantity === undefined && data.current_quantity === undefined) {
-    return { error: new Error('At least one field must be provided for update') };
-  }
-
-  // Validation de initial_quantity si fourni
-  if (data.initial_quantity !== undefined) {
-    if (!Number.isInteger(data.initial_quantity) || data.initial_quantity < 0) {
-      return { error: new Error('initial_quantity must be a non-negative integer') };
-    }
-  }
-
-  // Validation de current_quantity si fourni
-  if (data.current_quantity !== undefined) {
-    if (!Number.isInteger(data.current_quantity) || data.current_quantity < 0) {
-      return { error: new Error('current_quantity must be a non-negative integer') };
-    }
-  }
-
-  return { valid: true };
-}
-
-// ============================================================================
-// BULK STOCK VALIDATION
-// ============================================================================
-
-interface BulkStockData {
-  delivery_id?: number;
-  stocks?: Array<{
-    product_id: number;
-    initial_quantity: number;
-  }>;
-}
-
-export function validateBulkStockData(data: BulkStockData): ValidationResult {
-  const { delivery_id, stocks } = data;
-
-  // Champs requis
-  if (!delivery_id || !Number.isInteger(delivery_id) || delivery_id <= 0) {
-    return { error: new Error('delivery_id is required and must be a positive integer') };
-  }
-
-  if (!Array.isArray(stocks) || stocks.length === 0) {
-    return { error: new Error('stocks must be a non-empty array') };
-  }
-
-  // Validation de chaque stock
-  for (let i = 0; i < stocks.length; i++) {
-    const stock = stocks[i];
-
-    if (!stock.product_id || !Number.isInteger(stock.product_id) || stock.product_id <= 0) {
-      return { error: new Error(`Stock ${i + 1}: product_id must be a positive integer`) };
-    }
-
-    if (!stock.initial_quantity || !Number.isInteger(stock.initial_quantity) || stock.initial_quantity <= 0) {
-      return { error: new Error(`Stock ${i + 1}: initial_quantity must be a positive integer`) };
-    }
-  }
-
-  return { valid: true };
+// Validation delivery_id, stocks (tableau de product_id et initial_quantity)
+export function validateBulkStockData(data: unknown): ValidationResult {
+  const result = bulkStockSchema.safeParse(data);
+  return result.success
+    ? { valid: true, data: result.data }
+    : { error: new ValidationError(result.error.message ?? 'Invalid bulk stock data') };
 }
